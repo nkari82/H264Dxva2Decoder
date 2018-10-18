@@ -342,19 +342,52 @@ HRESULT CDxva2Decoder::InitDecoderService(){
 HRESULT CDxva2Decoder::InitVideoDecoder(){
 
 	HRESULT hr;
+	DXVA2_ConfigPictureDecode* pConfigs = NULL;
 	UINT uiCount;
+	UINT uiIndex = 0;
 
-	IF_FAILED_RETURN(hr = m_pDecoderService->GetDecoderConfigurations(m_gH264Vld, &m_Dxva2Desc, NULL, &uiCount, &m_pConfigs));
+	IF_FAILED_RETURN(hr = m_pDecoderService->GetDecoderConfigurations(m_gH264Vld, &m_Dxva2Desc, NULL, &uiCount, &pConfigs));
 
-	IF_FAILED_RETURN(hr = (uiCount != 2 ? E_FAIL : S_OK));
-	IF_FAILED_RETURN(hr = (m_pConfigs[1].ConfigBitstreamRaw != 2 ? E_FAIL : S_OK));
+	IF_FAILED_RETURN(hr = ((pConfigs == NULL || uiCount == 0) ? E_FAIL : S_OK));
+
+	for(; uiIndex < uiCount; uiIndex++){
+
+		// Configuration i use with NVIDIA 700 series
+
+		// GUID guidConfigBitstreamEncryption		: {1B81BED0-A0C7-11D3-B984-00C04F2E73C5} (DXVA_NoEncrypt)
+		// GUID guidConfigMBcontrolEncryption		: {1B81BED0-A0C7-11D3-B984-00C04F2E73C5} (DXVA_NoEncrypt)
+		// GUID guidConfigResidDiffEncryption		: {1B81BED0-A0C7-11D3-B984-00C04F2E73C5} (DXVA_NoEncrypt)
+		// UINT ConfigBitstreamRaw					: 2
+		// UINT ConfigMBcontrolRasterOrder			: 0
+		// UINT ConfigResidDiffHost					: 0
+		// UINT ConfigSpatialResid8					: 0
+		// UINT ConfigResid8Subtraction				: 0
+		// UINT ConfigSpatialHost8or9Clipping		: 0
+		// UINT ConfigSpatialResidInterleaved		: 0
+		// UINT ConfigIntraResidUnsigned			: 0
+		// UINT ConfigResidDiffAccelerator			: 1
+		// UINT ConfigHostInverseScan				: 1
+		// UINT ConfigSpecificIDCT					: 2
+		// UINT Config4GroupedCoefs					: 0
+		// USHORT ConfigMinRenderTargetBuffCount	: 3
+		// USHORT ConfigDecoderSpecific				: 0
+
+		if(pConfigs[uiIndex].ConfigBitstreamRaw == 2){
+
+			// if ConfigBitstreamRaw == 2, we can use DXVA_Slice_H264_Short
+			m_pConfigs = pConfigs;
+			break;
+		}
+	}
+
+	IF_FAILED_RETURN(hr = (m_pConfigs == NULL ? E_FAIL : S_OK));
 
 	assert(m_pVideoDecoder == NULL && m_pSurface9[0] == NULL);
 
 	IF_FAILED_RETURN(hr = m_pDecoderService->CreateSurface(m_Dxva2Desc.SampleWidth, m_Dxva2Desc.SampleHeight, NUM_DXVA2_SURFACE - 1,
 		static_cast<D3DFORMAT>(D3DFMT_NV12), D3DPOOL_DEFAULT, 0, DXVA2_VideoDecoderRenderTarget, m_pSurface9, NULL));
 
-	IF_FAILED_RETURN(hr = m_pDecoderService->CreateVideoDecoder(m_gH264Vld, &m_Dxva2Desc, &m_pConfigs[1], m_pSurface9, NUM_DXVA2_SURFACE, &m_pVideoDecoder));
+	IF_FAILED_RETURN(hr = m_pDecoderService->CreateVideoDecoder(m_gH264Vld, &m_Dxva2Desc, &m_pConfigs[uiIndex], m_pSurface9, NUM_DXVA2_SURFACE, &m_pVideoDecoder));
 
 	InitDxva2Struct();
 
