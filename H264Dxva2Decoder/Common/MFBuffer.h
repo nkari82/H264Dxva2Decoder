@@ -20,7 +20,6 @@ public:
 	HRESULT Reserve(const DWORD);
 	HRESULT SetStartPosition(const DWORD);
 	HRESULT SetEndPosition(const DWORD);
-	HRESULT DecreaseEndPosition();
 	void Reset();
 	void Delete();
 
@@ -129,19 +128,6 @@ inline HRESULT CMFBuffer::SetEndPosition(const DWORD dwPos){
 
 	m_dwEndPosition = dwNewPos;
 	m_dwStartAfterResize = 0;
-
-	return S_OK;
-}
-
-inline HRESULT CMFBuffer::DecreaseEndPosition(){
-
-	assert(m_dwEndPosition != 0);
-
-	if(m_dwEndPosition == 0){
-		return E_UNEXPECTED;
-	}
-
-	m_dwEndPosition--;
 
 	return S_OK;
 }

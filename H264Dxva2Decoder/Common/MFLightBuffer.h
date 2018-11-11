@@ -13,6 +13,7 @@ public:
 
 	HRESULT Initialize(const DWORD);
 	HRESULT Reserve(const DWORD);
+	HRESULT DecreaseEndPosition();
 	void Delete();
 
 	BYTE* GetBuffer(){ return m_pBuffer; }
@@ -72,6 +73,17 @@ inline HRESULT CMFLightBuffer::Reserve(const DWORD dwSize){
 
 		return E_OUTOFMEMORY;
 	}
+
+	return S_OK;
+}
+
+inline HRESULT CMFLightBuffer::DecreaseEndPosition(){
+
+	if(m_dwSize == 0){
+		return E_UNEXPECTED;
+	}
+
+	m_dwSize--;
 
 	return S_OK;
 }
