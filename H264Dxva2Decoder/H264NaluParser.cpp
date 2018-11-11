@@ -10,18 +10,13 @@ CH264NaluParser::CH264NaluParser() : m_bHasSPS(FALSE), m_bHasPPS(FALSE), m_dwWid
 	ZeroMemory(&m_Picture, sizeof(PICTURE_INFO));
 }
 
-HRESULT CH264NaluParser::ParseVideoConfigDescriptor(BYTE* pData, const DWORD dwSize){
+HRESULT CH264NaluParser::ParseVideoConfigDescriptor(const BYTE* pData, const DWORD dwSize){
 
-	HRESULT hr = S_FALSE;
-	DWORD dwLeft = dwSize;
+	HRESULT hr;
 	DWORD dwNaluSize = 0;
+	DWORD dwLeft = dwSize;
 
-	assert(pData != NULL);
-
-	if(dwLeft <= 4){
-		TRACE((L"ParseNalHeader : buffer size <= 4"));
-		return hr;
-	}
+	IF_FAILED_RETURN(hr = (dwSize > 8 && pData != NULL ? S_OK : E_FAIL));
 
 	if(m_iNaluLenghtSize == 4){
 
@@ -29,13 +24,14 @@ HRESULT CH264NaluParser::ParseVideoConfigDescriptor(BYTE* pData, const DWORD dwS
 	}
 	else if(m_iNaluLenghtSize == 2){
 
-		dwNaluSize = pData[0] >> 8;
+		dwNaluSize = pData[0] << 8;
 		dwNaluSize |= pData[1];
 	}
 	else{
 
 		// todo : size 1
 		assert(FALSE);
+		return E_FAIL;
 	}
 
 	pData += m_iNaluLenghtSize;
@@ -74,13 +70,14 @@ HRESULT CH264NaluParser::ParseVideoConfigDescriptor(BYTE* pData, const DWORD dwS
 	}
 	else if(m_iNaluLenghtSize == 2){
 
-		dwNaluSize = pData[0] >> 8;
+		dwNaluSize = pData[0] << 8;
 		dwNaluSize |= pData[1];
 	}
 	else{
 
 		// todo : size 1
 		assert(FALSE);
+		return E_FAIL;
 	}
 
 	pData += m_iNaluLenghtSize;
@@ -116,7 +113,7 @@ HRESULT CH264NaluParser::ParseVideoConfigDescriptor(BYTE* pData, const DWORD dwS
 HRESULT CH264NaluParser::ParseNaluHeader(CMFBuffer& pVideoBuffer){
 
 	HRESULT hr = S_FALSE;
-	DWORD dwNaluSize;
+	DWORD dwNaluSize = 0;
 	DWORD dwSize = pVideoBuffer.GetBufferSize();
 
 	if(dwSize <= 4){
@@ -127,25 +124,25 @@ HRESULT CH264NaluParser::ParseNaluHeader(CMFBuffer& pVideoBuffer){
 	if(m_iNaluLenghtSize == 4){
 
 		dwNaluSize = MAKE_DWORD(pVideoBuffer.GetStartBuffer());
-		assert(dwNaluSize < pVideoBuffer.GetBufferSize());
 	}
 	else if(m_iNaluLenghtSize == 2){
 
 		dwNaluSize = pVideoBuffer.GetStartBuffer()[0] << 8;
 		dwNaluSize |= pVideoBuffer.GetStartBuffer()[1];
-		assert(dwNaluSize < pVideoBuffer.GetBufferSize());
 	}
 	else{
 
 		// todo : size 1
 		assert(FALSE);
+		return E_FAIL;
 	}
 
-	IF_FAILED_THROW(hr = pVideoBuffer.SetStartPosition(m_iNaluLenghtSize));
+	assert(dwNaluSize <= pVideoBuffer.GetBufferSize());
 
-	//RemoveEmulationPreventionByte(pVideoBuffer, pVideoBuffer.GetBufferSize() - 4);
+	IF_FAILED_RETURN(hr = pVideoBuffer.SetStartPosition(m_iNaluLenghtSize));
 
 	// Todo : remove the consecutive ZERO at the end of current NAL in the reverse order.--2011.6.1
+	// RemoveEmulationPreventionByte : no problem for now
 
 	BYTE* pData = pVideoBuffer.GetStartBuffer();
 
@@ -183,31 +180,6 @@ HRESULT CH264NaluParser::ParseNaluHeader(CMFBuffer& pVideoBuffer){
 		hr = pVideoBuffer.SetStartPosition(dwNaluSize);
 
 	return hr;
-}
-
-void CH264NaluParser::RemoveEmulationPreventionByte(CMFBuffer& pNalUnitBuffer, const DWORD dwSize){
-
-	DWORD dwValue;
-	DWORD dwIndex = 0;
-	BYTE* pData = pNalUnitBuffer.GetStartBuffer();
-
-	while(dwIndex < dwSize){
-
-		dwValue = MAKE_DWORD(pData);
-
-		if(dwValue == 0x00000300 || dwValue == 0x00000301 || dwValue == 0x00000302 || dwValue == 0x00000303){
-
-			BYTE* pDataTmp = pNalUnitBuffer.GetStartBuffer();
-
-			memcpy(pDataTmp + (dwIndex + 2), pDataTmp + (dwIndex + 3), pNalUnitBuffer.GetBufferSize() - (dwIndex + 2));
-			pNalUnitBuffer.DecreaseEndPosition();
-		}
-		else
-		{
-			dwIndex += 1;
-			pData += 1;
-		}
-	}
 }
 
 HRESULT CH264NaluParser::ParseSPS(){
@@ -424,12 +396,12 @@ HRESULT CH264NaluParser::ParsePPS(){
 
 		for(uint ix = 0; ix < max_count; ix++){
 
-		temp = m_cBitStream.GetBits(1);
+			temp = m_cBitStream.GetBits(1);
 
-		if(temp){
-		scaling_list(ix, ix < 6 ? 16 : 64, bs);
+			if(temp){
+				scaling_list(ix, ix < 6 ? 16 : 64, bs);
 		}
-		}*/
+		*/
 	}
 
 	pPPS->second_chroma_qp_index_offset = m_cBitStream.SGolomb();
@@ -447,6 +419,10 @@ HRESULT CH264NaluParser::ParseCodedSlice(){
 	ZeroMemory(&m_Picture.slice.PicMarking, sizeof(m_Picture.slice.PicMarking));
 
 	m_Picture.slice.first_mb_in_slice = (USHORT)m_cBitStream.UGolomb();
+
+	// todo : handle multiple NALU in one slice frame
+	IF_FAILED_RETURN(hr = (m_Picture.slice.first_mb_in_slice ? E_FAIL : S_OK));
+
 	m_Picture.slice.slice_type = (USHORT)m_cBitStream.UGolomb();
 	m_Picture.slice.pic_parameter_set_id = (USHORT)m_cBitStream.UGolomb();
 	m_Picture.slice.frame_num = (USHORT)m_cBitStream.GetBits(m_Picture.sps.log2_max_frame_num_minus4 + 4);
@@ -532,7 +508,8 @@ HRESULT CH264NaluParser::ParseCodedSlice(){
 					m_Picture.slice.vReorderedList[0][iIndex].long_term_pic_num = (USHORT)m_cBitStream.UGolomb();
 				else if(m_Picture.slice.vReorderedList[0][iIndex].reordering_of_pic_nums_idc != 3)
 					IF_FAILED_RETURN(hr = E_FAIL);
-			} while(m_Picture.slice.vReorderedList[0][iIndex].reordering_of_pic_nums_idc != 3);
+			}
+			while(m_Picture.slice.vReorderedList[0][iIndex].reordering_of_pic_nums_idc != 3);
 		}
 	}
 
@@ -557,7 +534,8 @@ HRESULT CH264NaluParser::ParseCodedSlice(){
 					m_Picture.slice.vReorderedList[1][iIndex].long_term_pic_num = (USHORT)m_cBitStream.UGolomb();
 				else if(m_Picture.slice.vReorderedList[1][iIndex].reordering_of_pic_nums_idc != 3)
 					IF_FAILED_RETURN(hr = E_FAIL);
-			} while(m_Picture.slice.vReorderedList[1][iIndex].reordering_of_pic_nums_idc != 3);
+			}
+			while(m_Picture.slice.vReorderedList[1][iIndex].reordering_of_pic_nums_idc != 3);
 		}
 	}
 
@@ -573,7 +551,7 @@ HRESULT CH264NaluParser::ParseCodedSlice(){
 	/*if(memory_management_control_operation == 5){
 	  prevFrameNumOffset = 0;
 	  tempPicOrderCnt = PicOrderCnt(CurrPic);
-	  TopFieldOrderCnt = TopFieldOrderCnt  tempPicOrderCnt
+	  TopFieldOrderCnt = TopFieldOrderCnt ?tempPicOrderCnt
 	}
 	else
 	*/
@@ -708,47 +686,8 @@ HRESULT CH264NaluParser::ParseVuiParameters(SPS_DATA* pSPS){
 
 	if(pSPS->sVuiParameters.timing_info_present_flag){
 
-		// emulation_prevention_three_byte
-		DWORD dwCheckEmulation = m_cBitStream.PeekBits(24);
-
-		if(dwCheckEmulation == 0){
-
-			pSPS->sVuiParameters.num_units_in_tick = m_cBitStream.GetBits(24);
-			CheckEmulationByte();
-			pSPS->sVuiParameters.num_units_in_tick += m_cBitStream.GetBits(8);
-		}
-		else{
-
-			if(m_cBitStream.PeekBits(28) == 48){
-
-				m_cBitStream.GetBits(24);
-				pSPS->sVuiParameters.num_units_in_tick = m_cBitStream.GetBits(16);
-			}
-			else{
-				pSPS->sVuiParameters.num_units_in_tick = m_cBitStream.GetBits(32);
-			}
-		}
-
-		dwCheckEmulation = m_cBitStream.PeekBits(24);
-
-		if(dwCheckEmulation == 0){
-
-			pSPS->sVuiParameters.time_scale = m_cBitStream.GetBits(24);
-			CheckEmulationByte();
-			pSPS->sVuiParameters.time_scale += m_cBitStream.GetBits(8);
-		}
-		else{
-
-			if(m_cBitStream.PeekBits(28) == 48){
-
-				m_cBitStream.GetBits(24);
-				pSPS->sVuiParameters.time_scale = m_cBitStream.GetBits(16);
-			}
-			else{
-				pSPS->sVuiParameters.time_scale = m_cBitStream.GetBits(32);
-			}
-		}
-
+		pSPS->sVuiParameters.num_units_in_tick = m_cBitStream.GetBits(32);
+		pSPS->sVuiParameters.time_scale = m_cBitStream.GetBits(32);
 		pSPS->sVuiParameters.fixed_frame_rate_flag = m_cBitStream.GetBits(1) ? TRUE : FALSE;
 	}
 
@@ -945,36 +884,4 @@ void CH264NaluParser::hrd_parameters(){
 	/*DWORD cpb_removal_delay_length_minus1 =*/ m_cBitStream.GetBits(5);
 	/*DWORD dpb_output_delay_length_minus1 =*/ m_cBitStream.GetBits(5);
 	/*DWORD time_offset_length =*/ m_cBitStream.GetBits(5);
-}
-
-void CH264NaluParser::CheckEmulationByte(){
-
-	if(m_cBitStream.PeekBits(2) == 3){
-		if(m_cBitStream.PeekBits(8) == 0xc0)
-			m_cBitStream.GetBits(8);
-	}
-	else if(m_cBitStream.PeekBits(3) == 3){
-		if(m_cBitStream.PeekBits(8) == 0x60)
-			m_cBitStream.GetBits(8);
-	}
-	else if(m_cBitStream.PeekBits(4) == 3){
-		if(m_cBitStream.PeekBits(8) == 0x30)
-			m_cBitStream.GetBits(8);
-	}
-	else if(m_cBitStream.PeekBits(5) == 3){
-		if(m_cBitStream.PeekBits(8) == 0x18)
-			m_cBitStream.GetBits(8);
-	}
-	else if(m_cBitStream.PeekBits(6) == 3){
-		if(m_cBitStream.PeekBits(8) == 0x0c)
-			m_cBitStream.GetBits(8);
-	}
-	else if(m_cBitStream.PeekBits(7) == 3){
-		if(m_cBitStream.PeekBits(8) == 0x06)
-			m_cBitStream.GetBits(8);
-	}
-	else if(m_cBitStream.PeekBits(8) == 3){
-		if(m_cBitStream.PeekBits(8) == 0x03)
-			m_cBitStream.GetBits(8);
-	}
 }

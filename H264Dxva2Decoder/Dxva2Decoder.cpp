@@ -258,9 +258,8 @@ HRESULT CDxva2Decoder::DecodeFrame(CMFBuffer& cMFNaluBuffer, const PICTURE_INFO&
 
 		// BitStream
 		IF_FAILED_THROW(hr = m_pVideoDecoder->GetBuffer(DXVA2_BitStreamDateBufferType, &pBuffer, &uiSize));
-		assert(cMFNaluBuffer.GetBufferSize() <= uiSize);
 		IF_FAILED_THROW(hr = AddNalUnitBufferPadding(cMFNaluBuffer, uiSize));
-		// Todo : padding
+		assert(cMFNaluBuffer.GetBufferSize() <= uiSize);
 		memcpy(pBuffer, cMFNaluBuffer.GetStartBuffer(), cMFNaluBuffer.GetBufferSize());
 		IF_FAILED_THROW(hr = m_pVideoDecoder->ReleaseBuffer(DXVA2_BitStreamDateBufferType));
 

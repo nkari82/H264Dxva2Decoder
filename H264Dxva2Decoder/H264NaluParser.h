@@ -11,14 +11,11 @@ public:
 	CH264NaluParser();
 	~CH264NaluParser(){}
 
-	HRESULT ParseVideoConfigDescriptor(BYTE*, const DWORD);
+	HRESULT ParseVideoConfigDescriptor(const BYTE*, const DWORD);
 	HRESULT ParseNaluHeader(CMFBuffer&);
 
-	const BOOL HasSPS() const{ return m_bHasSPS; }
-	const BOOL HasPPS() const{ return m_bHasPPS; }
 	const BOOL IsNalUnitCodedSlice() const{ return (m_Picture.NalUnitType == NAL_UNIT_CODED_SLICE || m_Picture.NalUnitType == NAL_UNIT_CODED_SLICE_IDR); }
 	const PICTURE_INFO& GetPicture() const { return m_Picture; }
-	void ResetPPS(){ m_bHasPPS = FALSE; }
 	const DWORD GetWidth() const{ return m_dwWidth; }
 	const DWORD GetHeight() const{ return m_dwHeight; }
 	void SetNaluLenghtSize(const int iNaluLenghtSize){ m_iNaluLenghtSize = iNaluLenghtSize; };
@@ -33,7 +30,6 @@ private:
 	DWORD m_dwHeight;
 	int m_iNaluLenghtSize;
 
-	void RemoveEmulationPreventionByte(CMFBuffer&, const DWORD);
 	HRESULT ParseSPS();
 	HRESULT ParsePPS();
 	HRESULT ParseCodedSlice();
@@ -42,7 +38,6 @@ private:
 	HRESULT ParsePredWeightTable();
 	HRESULT ParseDecRefPicMarking();
 	void hrd_parameters();
-	void CheckEmulationByte();
 };
 
 #endif

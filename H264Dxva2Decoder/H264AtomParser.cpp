@@ -5,15 +5,11 @@
 
 CH264AtomParser::CH264AtomParser() :
 	m_pByteStream(NULL),
-	m_bEOS(FALSE),
-	m_bHasVideoOffset(FALSE),
 	m_dwCurrentSample(0),
 	m_dwTimeScale(0),
-	m_dwDuration(0),
+	m_ui64VideoDuration(0),
 	m_iNaluLenghtSize(0)
 {
-	ZeroMemory(&m_sAtomHeader, sizeof(ATOM_HEADER));
-	ZeroMemory(&m_sTrackHeader, 2 * sizeof(TRACK_HEADER));
 	ZeroMemory(&m_DisplayMatrix, sizeof(m_DisplayMatrix));
 }
 
@@ -35,7 +31,6 @@ HRESULT CH264AtomParser::Initialize(LPCWSTR wszFile){
 
 		IF_FAILED_THROW(hr = pByteStream->Initialize(wszFile, &dwFlags, &liFileSize));
 		IF_FAILED_THROW(hr = m_cMp4ParserBuffer.Initialize(READ_SIZE));
-		IF_FAILED_THROW(hr = m_cMp4ParserBuffer.Reserve(READ_SIZE));
 
 		m_pByteStream = pByteStream;
 		m_pByteStream->AddRef();
@@ -47,20 +42,74 @@ HRESULT CH264AtomParser::Initialize(LPCWSTR wszFile){
 	return hr;
 }
 
-void CH264AtomParser::Delete(){
+HRESULT CH264AtomParser::ParseMp4(){
 
-	m_cMp4ParserBuffer.Delete();
-	SAFE_RELEASE(m_pByteStream);
-	m_pSyncHeader.Delete();
+	HRESULT hr;
+	ROOT_ATOM sRootAtom = {0};
 
-	m_vChunks.clear();
-	m_vSamples.clear();
-	m_vSyncSamples.clear();
-	m_vChunkOffset.clear();
-	m_vCompositionOffset.clear();
+	IF_FAILED_RETURN(hr = (m_pByteStream ? S_OK : MF_E_ALREADY_INITIALIZED));
+
+	try{
+
+		IF_FAILED_THROW(hr = m_pByteStream->Reset());
+		m_cMp4ParserBuffer.Reset();
+
+		IF_FAILED_THROW(hr = ParseAtoms(sRootAtom));
+
+		IF_FAILED_THROW(hr = (sRootAtom.bFTYP && sRootAtom.bMOOV && sRootAtom.bMDAT ? S_OK : E_FAIL));
+
+		for(auto& TrackInfo : m_vTrackInfo){
+
+			if(TrackInfo.dwTypeHandler == HANDLER_TYPE_VIDEO){
+
+				IF_FAILED_THROW(hr = FinalizeSampleTime(TrackInfo));
+				IF_FAILED_THROW(hr = FinalizeSampleOffset(TrackInfo));
+				IF_FAILED_THROW(hr = FinalizeSampleSync(TrackInfo));
+			}
+
+			TrackInfo.vChunks.clear();
+			TrackInfo.vSyncSamples.clear();
+			TrackInfo.vChunkOffset.clear();
+			TrackInfo.vTimeSample.clear();
+			TrackInfo.vCompositionTime.clear();
+			TrackInfo.vEditList.clear();
+		}
+	}
+	catch(HRESULT){}
+
+	return hr;
 }
 
-HRESULT CH264AtomParser::GetNextSample(BYTE** ppData, DWORD* pSize){
+void CH264AtomParser::Delete(){
+
+	SAFE_RELEASE(m_pByteStream);
+	m_cMp4ParserBuffer.Delete();
+
+	ZeroMemory(&m_DisplayMatrix, sizeof(m_DisplayMatrix));
+
+	for(auto& TrackInfo : m_vTrackInfo){
+
+		// todo : all vector should be clear when m_vTrackInfo.clear(), we can just do SAFE_DELETE
+		TrackInfo.vChunks.clear();
+		TrackInfo.vSamples.clear();
+		TrackInfo.vSyncSamples.clear();
+		TrackInfo.vChunkOffset.clear();
+		TrackInfo.vTimeSample.clear();
+		TrackInfo.vCompositionTime.clear();
+		TrackInfo.vEditList.clear();
+
+		SAFE_DELETE(TrackInfo.pConfig);
+	}
+
+	m_vTrackInfo.clear();
+
+	m_dwCurrentSample = 0;
+	m_dwTimeScale = 0;
+	m_ui64VideoDuration = 0;
+	m_iNaluLenghtSize = 0;
+}
+
+HRESULT CH264AtomParser::GetNextSample(const DWORD dwTrackId, BYTE** ppData, DWORD* pSize){
 
 	HRESULT hr;
 	DWORD dwRead;
@@ -68,18 +117,22 @@ HRESULT CH264AtomParser::GetNextSample(BYTE** ppData, DWORD* pSize){
 
 	IF_FAILED_RETURN(hr = (ppData && pSize ? S_OK : E_FAIL));
 
-	if(m_dwCurrentSample >= m_vSamples.size()){
+	const vector<SAMPLE_INFO>* vSamples = GetSamples(dwTrackId);
+
+	IF_FAILED_RETURN(hr = (vSamples ? S_OK : E_FAIL));
+
+	if(m_dwCurrentSample >= vSamples->size()){
 		return S_FALSE;
 	}
 
 	IF_FAILED_RETURN(hr = m_pByteStream->Reset());
-	IF_FAILED_RETURN(hr = (m_vSamples[m_dwCurrentSample].dwSize > 8 ? S_OK : E_FAIL));
+	IF_FAILED_RETURN(hr = ((*vSamples)[m_dwCurrentSample].dwSize > 4 ? S_OK : E_FAIL));
 
 	// todo : SeekHigh
-	assert((m_vSamples[m_dwCurrentSample].dwOffset) <= LONG_MAX);
-	IF_FAILED_RETURN(hr = m_pByteStream->Seek(m_vSamples[m_dwCurrentSample].dwOffset));
+	assert(((*vSamples)[m_dwCurrentSample].dwOffset) <= LONG_MAX);
+	IF_FAILED_RETURN(hr = m_pByteStream->Seek((*vSamples)[m_dwCurrentSample].dwOffset));
 
-	dwChunkSize = m_vSamples[m_dwCurrentSample].dwSize;
+	dwChunkSize = (*vSamples)[m_dwCurrentSample].dwSize;
 
 	m_cMp4ParserBuffer.Reset();
 
@@ -91,63 +144,278 @@ HRESULT CH264AtomParser::GetNextSample(BYTE** ppData, DWORD* pSize){
 	IF_FAILED_RETURN(hr = m_cMp4ParserBuffer.SetEndPosition(dwRead));
 
 	*ppData = m_cMp4ParserBuffer.GetStartBuffer();
-	*pSize = dwRead;
+	*pSize = m_cMp4ParserBuffer.GetBufferSize();
 	m_dwCurrentSample++;
 
 	return hr;
 }
 
-HRESULT CH264AtomParser::GetVideoConfigDescriptor(BYTE** ppData, DWORD* pSize){
+HRESULT CH264AtomParser::GetVideoConfigDescriptor(const DWORD dwTrackId, BYTE** ppData, DWORD* pSize){
 
 	HRESULT hr;
 
-	IF_FAILED_RETURN(hr = (m_pSyncHeader.GetBufferSize() == 0 ? E_FAIL : S_OK));
+	CMFLightBuffer* pConfig = GetConfig(dwTrackId);
 
-	*ppData = m_pSyncHeader.GetBuffer();
-	*pSize = m_pSyncHeader.GetBufferSize();
+	IF_FAILED_RETURN(hr = (!pConfig || pConfig->GetBufferSize() == 0 ? E_FAIL : S_OK));
+
+	*ppData = pConfig->GetBuffer();
+	*pSize = pConfig->GetBufferSize();
 
 	return hr;
 }
 
-HRESULT CH264AtomParser::ParseMp4(){
+HRESULT CH264AtomParser::GetVideoFrameRate(const DWORD dwTrackId, UINT* puiNumerator, UINT* puiDenominator){
 
 	HRESULT hr;
+	UINT64 ui64Time = 0;
 
-	IF_FAILED_RETURN(hr = m_pByteStream ? S_OK : E_FAIL);
-	ZeroMemory(&m_sAtomHeader, sizeof(ATOM_HEADER));
-	ZeroMemory(&m_sTrackHeader, 2 * sizeof(TRACK_HEADER));
-	ZeroMemory(&m_DisplayMatrix, sizeof(m_DisplayMatrix));
-	m_bHasVideoOffset = FALSE;
-	m_vChunks.clear();
-	m_vSamples.clear();
-	m_vSyncSamples.clear();
-	m_vChunkOffset.clear();
-	m_vCompositionOffset.clear();
-	m_dwCurrentSample = 0;
-	m_dwTimeScale = 0;
-	m_dwDuration = 0;
-	m_iNaluLenghtSize = 0;
-	m_pSyncHeader.Delete();
+	for(auto& TrackInfo : m_vTrackInfo){
 
-	try{
+		if(TrackInfo.dwTrackId == dwTrackId){
 
-		IF_FAILED_THROW(hr = m_pByteStream->Reset());
-		m_cMp4ParserBuffer.Reset();
+			const vector<SAMPLE_INFO>::const_reverse_iterator rit = TrackInfo.vSamples.rbegin();
 
-		IF_FAILED_THROW(hr = FindAtoms());
+			if(rit != TrackInfo.vSamples.rend()){
 
-		IF_FAILED_THROW(hr = (m_sAtomHeader.bFTYP && m_sAtomHeader.bMOOV && m_sAtomHeader.bMDAT ? S_OK : E_FAIL));
+				ui64Time = rit->llTime + rit->llDuration;
 
-		IF_FAILED_THROW(hr = ReadMoov());
+				if(TrackInfo.vSamples.size() != 0)
+					ui64Time /= TrackInfo.vSamples.size();
+			}
 
-		IF_FAILED_THROW(hr = FinalizeSample());
+			break;
+		}
 	}
-	catch(HRESULT){}
+
+	// Frames per second(floating point)	Frames per second(fractional)	Average time per frame
+	// 59.94								60000 / 1001					166833
+	// 29.97								30000 / 1001					333667
+	// 23.976								24000 / 1001					417188
+	// 60									60 / 1							166667
+	// 30									30 / 1							333333
+	// 50									50 / 1							200000
+	// 25									25 / 1							400000
+	// 24									24 / 1							416667
+
+	IF_FAILED_RETURN(hr = (ui64Time ? S_OK : E_FAIL));
+	IF_FAILED_RETURN(hr = MFAverageTimePerFrameToFrameRate(ui64Time, puiNumerator, puiDenominator));
 
 	return hr;
 }
 
-HRESULT CH264AtomParser::FindAtoms(){
+HRESULT CH264AtomParser::FinalizeSampleTime(TRACK_INFO& TrackInfo){
+
+	HRESULT hr;
+	DWORD dwCompositionTimeIndex = 1;
+	DWORD dwTimeSampleIndex = 0;
+	DWORD dwTimeScale = 0;
+	LONGLONG llTime = 0;
+	LONGLONG llDuration = 0;
+
+	// todo
+	//assert(TrackInfo.vEditList.size() == 0);
+
+	IF_FAILED_RETURN(hr = (TrackInfo.vTimeSample.size() == 0 ? E_FAIL : S_OK));
+
+	dwTimeScale = TrackInfo.dwTimeScale ? TrackInfo.dwTimeScale : m_dwTimeScale;
+
+	IF_FAILED_RETURN(hr = (dwTimeScale ? S_OK : E_FAIL));
+
+	vector<TIME_INFO>::const_iterator itTime = TrackInfo.vTimeSample.begin();
+
+	if(TrackInfo.vCompositionTime.size() != 0){
+
+		vector<TIME_INFO>::const_iterator itComposition = TrackInfo.vCompositionTime.begin();
+
+		for(auto& itSample : TrackInfo.vSamples){
+
+			llDuration = itTime->dwOffset * (10000000 / dwTimeScale);
+			itSample.llDuration = llDuration;
+
+			dwTimeSampleIndex++;
+
+			if(itTime->dwCount == dwTimeSampleIndex){
+
+				if((itTime + 1) != TrackInfo.vTimeSample.end())
+					++itTime;
+
+				dwTimeSampleIndex = 0;
+			}
+
+			itSample.llTime = llTime + (itComposition->dwOffset * (10000000 / dwTimeScale));
+
+			if(itComposition->dwCount == 1){
+
+				if((itComposition + 1) != TrackInfo.vCompositionTime.end())
+					++itComposition;
+			}
+			else if(itComposition->dwCount == dwCompositionTimeIndex){
+
+				if((itComposition + 1) != TrackInfo.vCompositionTime.end())
+					++itComposition;
+
+				dwCompositionTimeIndex = 1;
+			}
+			else{
+
+				dwCompositionTimeIndex++;
+			}
+
+			llTime += llDuration;
+		}
+	}
+	else{
+
+		for(auto& itSample : TrackInfo.vSamples){
+
+			llDuration = itTime->dwOffset * (10000000 / dwTimeScale);
+			itSample.llDuration = llDuration;
+
+			dwTimeSampleIndex++;
+
+			if(itTime->dwCount == dwTimeSampleIndex){
+
+				if((itTime + 1) != TrackInfo.vTimeSample.end())
+					++itTime;
+
+				dwTimeSampleIndex = 0;
+			}
+
+			itSample.llTime = llTime;
+			llTime += llDuration;
+		}
+	}
+
+	return hr;
+}
+
+HRESULT CH264AtomParser::FinalizeSampleOffset(TRACK_INFO& TrackInfo){
+
+	HRESULT hr;
+	DWORD dwChunkIndex = 1;
+	DWORD dwChunkOffsetIndex = 1;
+	DWORD dwPrevOffset = 0;
+	DWORD dwPrevSize = 0;
+
+	IF_FAILED_RETURN(hr = (TrackInfo.vSamples.size() == 0 || TrackInfo.vChunks.size() == 0 || TrackInfo.vChunkOffset.size() == 0 ? E_FAIL : S_OK));
+
+	vector<CHUNCK_INFO>::const_iterator itChunk = TrackInfo.vChunks.begin();
+	vector<DWORD>::const_iterator itChunkOffset = TrackInfo.vChunkOffset.begin();
+	vector<CHUNCK_INFO>::const_iterator itChunkNext;
+
+	// Skip bad first chunk
+	// Some stupid mp4 files have multiple dwFirstChunk == 1, just skip them, seems to be ok
+	while((itChunkNext = itChunk + 1) != TrackInfo.vChunks.end()){
+
+		if(itChunkNext->dwFirstChunk == itChunk->dwFirstChunk)
+			itChunk = itChunkNext;
+		else
+			break;
+	}
+
+	for(auto& itSample : TrackInfo.vSamples){
+
+		if(itChunk->dwSamplesPerChunk == 1){
+
+			itSample.dwOffset = *itChunkOffset;
+
+			if((itChunkOffset + 1) != TrackInfo.vChunkOffset.end())
+				++itChunkOffset;
+
+			dwChunkIndex++;
+		}
+		else if(itChunk->dwSamplesPerChunk == dwChunkOffsetIndex){
+
+			itSample.dwOffset = dwPrevOffset + dwPrevSize;
+
+			if((itChunkOffset + 1) != TrackInfo.vChunkOffset.end())
+				++itChunkOffset;
+
+			dwChunkOffsetIndex = 1;
+			dwChunkIndex++;
+		}
+		else{
+
+			if(dwChunkOffsetIndex == 1){
+
+				itSample.dwOffset = *itChunkOffset;
+			}
+			else{
+
+				itSample.dwOffset = dwPrevOffset + dwPrevSize;
+			}
+
+			dwPrevOffset = itSample.dwOffset;
+			dwPrevSize = itSample.dwSize;
+
+			dwChunkOffsetIndex++;
+		}
+
+		if((itChunkNext = itChunk + 1) != TrackInfo.vChunks.end()){
+
+			if(itChunkNext->dwFirstChunk == dwChunkIndex)
+				itChunk = itChunkNext;
+		}
+	}
+
+	return hr;
+}
+
+HRESULT CH264AtomParser::FinalizeSampleSync(TRACK_INFO& TrackInfo){
+
+	HRESULT hr;
+	IF_FAILED_RETURN(hr = (TrackInfo.vSamples.size() == 0 || TrackInfo.vSyncSamples.size() == 0 ? E_FAIL : S_OK));
+
+	vector<SAMPLE_INFO>::iterator itSamples = TrackInfo.vSamples.begin();
+
+	for(auto& itSyncSample : TrackInfo.vSyncSamples){
+
+		if(itSyncSample && itSyncSample <= TrackInfo.vSamples.size())
+			(itSamples + (itSyncSample - 1))->bKeyFrame = TRUE;
+	}
+
+	return hr;
+}
+
+HRESULT CH264AtomParser::SeekAtom(LARGE_INTEGER& liCurrentFilePos, const DWORD dwAtomSize, const DWORD dwRead, const UINT64 ui64AtomSize){
+
+	HRESULT hr;
+
+	if(dwAtomSize == 1){
+
+		if(ui64AtomSize > LONG_MAX){
+
+			LARGE_INTEGER liFilePosToSeek = {0};
+			liFilePosToSeek.QuadPart = ui64AtomSize - dwRead;
+			IF_FAILED_RETURN(hr = m_pByteStream->SeekHigh(liFilePosToSeek));
+		}
+		else{
+
+			IF_FAILED_RETURN(hr = m_pByteStream->Seek(LONG(ui64AtomSize - dwRead)));
+		}
+
+		liCurrentFilePos.QuadPart += ui64AtomSize;
+	}
+	else{
+
+		if(dwAtomSize > LONG_MAX){
+
+			LARGE_INTEGER liFilePosToSeek = {0};
+			liFilePosToSeek.QuadPart = dwAtomSize - dwRead;
+			IF_FAILED_RETURN(hr = m_pByteStream->SeekHigh(liFilePosToSeek));
+		}
+		else{
+
+			IF_FAILED_RETURN(hr = m_pByteStream->Seek(dwAtomSize - dwRead));
+		}
+
+		liCurrentFilePos.QuadPart += dwAtomSize;
+	}
+
+	return hr;
+}
+
+HRESULT CH264AtomParser::ParseAtoms(ROOT_ATOM& sRootAtom){
 
 	HRESULT hr;
 	DWORD dwRead;
@@ -177,67 +445,44 @@ HRESULT CH264AtomParser::FindAtoms(){
 		switch(dwAtomType){
 
 			case ATOM_TYPE_FTYP:
-				if(m_sAtomHeader.bFTYP == FALSE && dwAtomSize > ATOM_MIN_SIZE_HEADER){
-
-					m_sAtomHeader.bFTYP = TRUE;
-					m_sAtomHeader.liFtypFilePos = liCurrentFilePos;
-				}
+				// Only one
+				IF_FAILED_RETURN(hr = (sRootAtom.bFTYP ? E_FAIL : S_OK));
+				sRootAtom.bFTYP = TRUE;
 				break;
 
 			case ATOM_TYPE_MOOV:
-				if(m_sAtomHeader.bMOOV == FALSE && dwAtomSize > ATOM_MIN_SIZE_HEADER){
-
-					m_sAtomHeader.bMOOV = TRUE;
-					m_sAtomHeader.dwMoovSize = dwAtomSize;
-					m_sAtomHeader.liMoovFilePos = liCurrentFilePos;
-				}
-				break;
+				// Only one
+				IF_FAILED_RETURN(hr = (sRootAtom.bMOOV ? E_FAIL : S_OK));
+				// todo : just one call here
+				assert(dwAtomSize != 1 && dwAtomSize > ATOM_MIN_READ_SIZE_HEADER);
+				IF_FAILED_RETURN(hr = m_pByteStream->Seek(-ATOM_MIN_SIZE_HEADER));
+				IF_FAILED_RETURN(hr = ParseMoov(dwAtomSize - ATOM_MIN_SIZE_HEADER));
+				sRootAtom.bMOOV = TRUE;
+				// Seek is already done in ReadMoov, so continue
+				continue;
 
 			case ATOM_TYPE_MDAT:
-				if(m_sAtomHeader.bMDAT == FALSE && (dwAtomSize > ATOM_MIN_SIZE_HEADER || dwAtomSize == 1)){
+				// One or more
+				sRootAtom.bMDAT = TRUE;
+				break;
 
-					m_sAtomHeader.bMDAT = TRUE;
-					m_sAtomHeader.liMdatFilePos = liCurrentFilePos;
-				}
+			case ATOM_TYPE_FREE:
+			case ATOM_TYPE_UUID:
+			case ATOM_TYPE_WIDE:
 				break;
 		}
 
-		if(dwAtomSize == 1){
+		// todo : sometimes ATOM_TYPE_UNKNOWN after last root, check why
+		if(sRootAtom.bFTYP && sRootAtom.bMOOV && sRootAtom.bMDAT)
+			break;
 
-			if(ui64AtomSize > LONG_MAX){
-
-				LARGE_INTEGER liFilePosToSeek = {0};
-				liFilePosToSeek.QuadPart = ui64AtomSize - dwRead;
-				IF_FAILED_RETURN(hr = m_pByteStream->SeekHigh(liFilePosToSeek));
-			}
-			else{
-
-				IF_FAILED_RETURN(hr = m_pByteStream->Seek(LONG(ui64AtomSize - dwRead)));
-			}
-
-			liCurrentFilePos.QuadPart += ui64AtomSize;
-		}
-		else{
-
-			if(dwAtomSize > LONG_MAX){
-
-				LARGE_INTEGER liFilePosToSeek = {0};
-				liFilePosToSeek.QuadPart = dwAtomSize - dwRead;
-				IF_FAILED_RETURN(hr = m_pByteStream->SeekHigh(liFilePosToSeek));
-			}
-			else{
-
-				IF_FAILED_RETURN(hr = m_pByteStream->Seek(dwAtomSize - dwRead));
-			}
-
-			liCurrentFilePos.QuadPart += dwAtomSize;
-		}
+		IF_FAILED_RETURN(hr = SeekAtom(liCurrentFilePos, dwAtomSize, dwRead, ui64AtomSize));
 	}
 
 	return hr;
 }
 
-HRESULT CH264AtomParser::ReadMoov(){
+HRESULT CH264AtomParser::ParseMoov(const DWORD dwAtomMoovSize){
 
 	HRESULT hr;
 	DWORD dwRead;
@@ -245,21 +490,10 @@ HRESULT CH264AtomParser::ReadMoov(){
 	DWORD dwAtomSize;
 	DWORD dwAtomType;
 
-	IF_FAILED_RETURN(hr = (m_sAtomHeader.dwMoovSize <= ATOM_MIN_SIZE_HEADER ? E_FAIL : S_OK));
-
-	IF_FAILED_RETURN(hr = m_cMp4ParserBuffer.Reserve(m_sAtomHeader.dwMoovSize));
-	IF_FAILED_RETURN(hr = m_pByteStream->Reset());
-	IF_FAILED_RETURN(hr = m_pByteStream->SeekFile(m_sAtomHeader.liMoovFilePos));
-	IF_FAILED_RETURN(hr = m_pByteStream->Read(m_cMp4ParserBuffer.GetReadStartBuffer(), m_sAtomHeader.dwMoovSize, &dwRead));
-	IF_FAILED_RETURN(hr = (dwRead == m_sAtomHeader.dwMoovSize ? S_OK : E_FAIL));
+	IF_FAILED_RETURN(hr = m_cMp4ParserBuffer.Reserve(dwAtomMoovSize));
+	IF_FAILED_RETURN(hr = m_pByteStream->Read(m_cMp4ParserBuffer.GetReadStartBuffer(), dwAtomMoovSize, &dwRead));
+	IF_FAILED_RETURN(hr = (dwRead == dwAtomMoovSize ? S_OK : E_FAIL));
 	IF_FAILED_RETURN(hr = m_cMp4ParserBuffer.SetEndPosition(dwRead));
-
-	pData = m_cMp4ParserBuffer.GetStartBuffer();
-	dwAtomSize = MAKE_DWORD(pData);
-	dwAtomType = MAKE_DWORD(pData + 4);
-
-	IF_FAILED_RETURN(hr = (dwAtomType == ATOM_TYPE_MOOV && dwAtomSize == dwRead ? S_OK : E_FAIL));
-	IF_FAILED_RETURN(hr = m_cMp4ParserBuffer.SetStartPosition(ATOM_MIN_SIZE_HEADER));
 
 	while(m_cMp4ParserBuffer.GetBufferSize() >= ATOM_MIN_SIZE_HEADER){
 
@@ -270,15 +504,31 @@ HRESULT CH264AtomParser::ReadMoov(){
 		// Todo
 		assert(dwAtomSize != 0 && dwAtomSize != 1);
 
-		IF_FAILED_RETURN(hr = (m_cMp4ParserBuffer.GetBufferSize() < dwAtomSize));
+		IF_FAILED_RETURN(hr = m_cMp4ParserBuffer.GetBufferSize() < dwAtomSize);
 
-		if(dwAtomType == ATOM_TYPE_TRAC){
+		switch(dwAtomType){
 
-			IF_FAILED_RETURN(hr = ReadTrack(pData + ATOM_MIN_SIZE_HEADER, dwAtomSize - ATOM_MIN_SIZE_HEADER));
-		}
-		else if(dwAtomType == ATOM_TYPE_MVHD){
+			case ATOM_TYPE_TRAK:
+				{
+					TRACK_INFO TrackInfo = {0};
+					if(FAILED(hr = ParseTrack(TrackInfo, pData + ATOM_MIN_SIZE_HEADER, dwAtomSize - ATOM_MIN_SIZE_HEADER))){
 
-			IF_FAILED_RETURN(hr = ReadMovieHeader(pData + ATOM_MIN_SIZE_HEADER, dwAtomSize - ATOM_MIN_SIZE_HEADER));
+						SAFE_DELETE(TrackInfo.pConfig);
+						return hr;
+					}
+					m_vTrackInfo.push_back(TrackInfo);
+				}
+				break;
+
+			case ATOM_TYPE_MVHD:
+				IF_FAILED_RETURN(hr = ParseMovieHeader(pData + ATOM_MIN_SIZE_HEADER, dwAtomSize - ATOM_MIN_SIZE_HEADER));
+				break;
+
+			case ATOM_TYPE_UDTA:
+			case ATOM_TYPE_IODS:
+			case ATOM_TYPE_FREE:
+			case ATOM_TYPE_UUID:
+				break;
 		}
 
 		IF_FAILED_RETURN(hr = m_cMp4ParserBuffer.SetStartPosition(dwAtomSize));
@@ -287,79 +537,7 @@ HRESULT CH264AtomParser::ReadMoov(){
 	return hr;
 }
 
-HRESULT CH264AtomParser::FinalizeSample(){
-
-	HRESULT hr;
-	DWORD dwCurrentKeyFrame = 0;
-	DWORD dwSampleCount = 0;
-	DWORD dwChunkOffsetIndex = 0;
-
-	IF_FAILED_RETURN(hr = (m_vSyncSamples.size() == 0 || m_vSamples.size() == 0 || m_vChunks.size() == 0 || m_vChunkOffset.size() == 0 ? E_FAIL : S_OK));
-
-	vector<CHUNCK_INFO>::const_iterator itChunk = m_vChunks.begin();
-	vector<CHUNCK_INFO>::const_iterator itChunkNext;
-	vector<DWORD>::const_iterator itChunkOffset = m_vChunkOffset.begin();
-
-	do{
-
-		// Set KeyFrame
-		if(dwCurrentKeyFrame < m_vSyncSamples.size() && (m_vSyncSamples[dwCurrentKeyFrame] - 1) == dwSampleCount){
-
-			m_vSamples[dwSampleCount].bKeyFrame = TRUE;
-			dwCurrentKeyFrame++;
-		}
-
-		if(itChunk->dwSamplesPerChunk > 1){
-
-			DWORD dwPrevOffset = m_vSamples[dwSampleCount].dwOffset = *itChunkOffset;
-			DWORD dwPrevSize = m_vSamples[dwSampleCount].dwSize;
-
-			dwSampleCount++;
-			itChunkOffset++;
-			dwChunkOffsetIndex++;
-
-			for(DWORD dwCount = 1; dwCount < itChunk->dwSamplesPerChunk && dwSampleCount < m_vSamples.size(); dwCount++, dwSampleCount++){
-
-				m_vSamples[dwSampleCount].dwOffset = dwPrevOffset + dwPrevSize;
-
-				dwPrevOffset = m_vSamples[dwSampleCount].dwOffset;
-				dwPrevSize = m_vSamples[dwSampleCount].dwSize;
-
-				// Set KeyFrame
-				if(dwCurrentKeyFrame < m_vSyncSamples.size() && (m_vSyncSamples[dwCurrentKeyFrame] - 1) == dwSampleCount){
-
-					m_vSamples[dwSampleCount].bKeyFrame = TRUE;
-					dwCurrentKeyFrame++;
-				}
-			}
-
-			if((itChunkNext = itChunk + 1) != m_vChunks.end()){
-
-				if((itChunkNext->dwFirstChunk - 1) == dwChunkOffsetIndex)
-					itChunk = itChunkNext;
-			}
-		}
-		else{
-
-			m_vSamples[dwSampleCount].dwOffset = *itChunkOffset;
-
-			dwSampleCount++;
-			itChunkOffset++;
-			dwChunkOffsetIndex++;
-
-			if((itChunkNext = itChunk + 1) != m_vChunks.end()){
-
-				if((itChunkNext->dwFirstChunk - 1) == dwChunkOffsetIndex)
-					itChunk = itChunkNext;
-			}
-		}
-	}
-	while(dwSampleCount < m_vSamples.size());
-
-	return hr;
-}
-
-HRESULT CH264AtomParser::ReadTrack(BYTE* pData, const DWORD dwAtomTrackSize){
+HRESULT CH264AtomParser::ParseTrack(TRACK_INFO& TrackInfo, BYTE* pData, const DWORD dwAtomTrackSize){
 
 	HRESULT hr = S_OK;
 
@@ -377,17 +555,24 @@ HRESULT CH264AtomParser::ReadTrack(BYTE* pData, const DWORD dwAtomTrackSize){
 
 		IF_FAILED_RETURN(hr = (dwAtomSize > dwAtomTrackSize - dwByteDone ? E_FAIL : S_OK));
 
-		if(dwAtomType == ATOM_TYPE_TKHD){
+		switch(dwAtomType){
 
-			IF_FAILED_RETURN(hr = ReadTrackHeader(pData + ATOM_MIN_SIZE_HEADER, dwAtomSize - ATOM_MIN_SIZE_HEADER));
-		}
-		else if(dwAtomType == ATOM_TYPE_EDTS){
+			case ATOM_TYPE_TKHD:
+				IF_FAILED_RETURN(hr = ParseTrackHeader(TrackInfo, pData + ATOM_MIN_SIZE_HEADER, dwAtomSize - ATOM_MIN_SIZE_HEADER));
+				break;
 
-			IF_FAILED_RETURN(hr = ReadEditAtoms(pData + ATOM_MIN_SIZE_HEADER, dwAtomSize - ATOM_MIN_SIZE_HEADER));
-		}
-		else if(dwAtomType == ATOM_TYPE_MDIA){
+			case ATOM_TYPE_EDTS:
+				IF_FAILED_RETURN(hr = ParseEditAtoms(TrackInfo.vEditList, pData + ATOM_MIN_SIZE_HEADER, dwAtomSize - ATOM_MIN_SIZE_HEADER));
+				break;
 
-			IF_FAILED_RETURN(hr = ReadMediaAtom(pData + ATOM_MIN_SIZE_HEADER, dwAtomSize - ATOM_MIN_SIZE_HEADER));
+			case ATOM_TYPE_MDIA:
+				IF_FAILED_RETURN(hr = ParseMediaAtom(TrackInfo, pData + ATOM_MIN_SIZE_HEADER, dwAtomSize - ATOM_MIN_SIZE_HEADER));
+				break;
+
+			case ATOM_TYPE_UDTA:
+			case ATOM_TYPE_TREF:
+			case ATOM_TYPE_UUID:
+				break;
 		}
 
 		dwByteDone += dwAtomSize;
@@ -397,13 +582,17 @@ HRESULT CH264AtomParser::ReadTrack(BYTE* pData, const DWORD dwAtomTrackSize){
 	return hr;
 }
 
-HRESULT CH264AtomParser::ReadMovieHeader(BYTE* pData, const DWORD /*dwAtomMovieHeaderSize*/){
+HRESULT CH264AtomParser::ParseMovieHeader(BYTE* pData, const DWORD dwAtomMovieHeaderSize){
 
-	HRESULT hr = S_OK;
+	HRESULT hr;
 
-	BYTE btVersion = *pData;
+	BYTE btVersion = *pData >> 6;
 
-	// Skip Version + Flag
+	DWORD dwTotalSize = btVersion ? 112 : 100;
+
+	IF_FAILED_RETURN(hr = (dwTotalSize == dwAtomMovieHeaderSize ? S_OK : E_FAIL));
+
+	// Skip Version/Flag
 	pData += 4;
 
 	// Skip Creation time and Modification time
@@ -415,21 +604,87 @@ HRESULT CH264AtomParser::ReadMovieHeader(BYTE* pData, const DWORD /*dwAtomMovieH
 	m_dwTimeScale = MAKE_DWORD(pData);
 	pData += 4;
 
-	// Skip Duration
-	if(btVersion == 0x01)
-	{
-		// todo
-		//UINT64 ui64Duration = MAKE_DWORD64(pData);
+	if(btVersion == 0x01){
+
+		m_ui64VideoDuration = MAKE_DWORD64(pData);
 		pData += 8;
 	}
 	else{
 
-		m_dwDuration = MAKE_DWORD(pData);
+		m_ui64VideoDuration = MAKE_DWORD(pData);
 		pData += 4;
 	}
 
-	// Skip Preferred rate/Volume and Reserved
-	pData += 16;
+	// Skip Preferred Rate/Volume/Reserved
+	//pData += 16;
+
+	// Skip Matrix
+	//pData += 36;
+
+	/*
+	// Preview time
+	MAKE_DWORD(pData);
+	pData += 4;
+	// Preview duration
+	MAKE_DWORD(pData);
+	pData += 4;
+	// Poster time
+	MAKE_DWORD(pData);
+	pData += 4;
+	// Selection time
+	MAKE_DWORD(pData);
+	pData += 4;
+	// Selection duration
+	MAKE_DWORD(pData);
+	pData += 4;
+	// Current time
+	MAKE_DWORD(pData);
+	pData += 4;
+	// Next track ID
+	MAKE_DWORD(pData);
+	*/
+
+	return hr;
+}
+
+HRESULT CH264AtomParser::ParseTrackHeader(TRACK_INFO& TrackInfo, BYTE* pData, const DWORD dwAtomTrackHeaderSize){
+
+	HRESULT hr;
+
+	BYTE btVersion = *pData >> 6;
+
+	DWORD dwTotalSize = btVersion ? 96 : 84;
+
+	IF_FAILED_RETURN(hr = (dwTotalSize == dwAtomTrackHeaderSize ? S_OK : E_FAIL));
+
+	// todo : flags
+	// if flags == 0, all enable
+	// BYTE btFlags = *pData & 0x0f; (if (btFlags != 0) -> todo)
+
+	// skip version/flags
+	pData += 4;
+
+	// Skip Creation/Modification Time
+	if(btVersion == 0x01){
+		pData += 16;
+	}
+	else{
+		pData += 8;
+	}
+
+	TrackInfo.dwTrackId = MAKE_DWORD(pData);
+	pData += 4;
+
+	// Skip Reserved/Duration/Reserved x 2
+	if(btVersion == 0x01){
+		pData += 20;
+	}
+	else{
+		pData += 16;
+	}
+
+	// Skip Layer/Alternate_group/Reserved
+	pData += 8;
 
 	for(int i = 0; i < 3; i++){
 
@@ -441,82 +696,19 @@ HRESULT CH264AtomParser::ReadMovieHeader(BYTE* pData, const DWORD /*dwAtomMovieH
 		pData += 4;
 	}
 
-	/*
-	// Preview time
-	MAKE_DWORD(pData);
-	pData++;
-	// Preview duration
-	MAKE_DWORD(pData);
-	pData++;
-	// Poster time
-	MAKE_DWORD(pData);
-	pData++;
-	// Selection time
-	MAKE_DWORD(pData);
-	pData++;
-	// Selection duration
-	MAKE_DWORD(pData);
-	pData++;
-	// Current time
-	MAKE_DWORD(pData);
-	pData++;
-	// Next track ID
-	MAKE_DWORD(pData);
-	*/
+	TrackInfo.dwWidth = MAKE_DWORD(pData) >> 16;
+	pData += 4;
+
+	TrackInfo.dwHeight = MAKE_DWORD(pData) >> 16;
 
 	return hr;
 }
 
-HRESULT CH264AtomParser::ReadTrackHeader(BYTE* /*pData*/, const DWORD /*dwAtomTrackHeaderSize*/){
+HRESULT CH264AtomParser::ParseEditAtoms(vector<EDIT_INFO>& vEditList, BYTE* pData, const DWORD dwAtomEditSize){
 
-	HRESULT hr = S_OK;
+	HRESULT hr;
 
-	/*DWORD dwCurrentData = MAKE_DWORD(pData);
-
-	TRACE((L"Flags : 0x%08x", dwCurrentData));
-	pData += 4;
-	dwCurrentData = MAKE_DWORD(pData);
-
-	time_t now = dwCurrentData - 2082844800;
-	tm* timeinfo = gmtime(&now);
-	//tm* timeinfo = localtime(&now);
-	char buffer[80];
-	strftime(buffer, 80, "%a %b %d %H:%M : %S %Y", timeinfo);
-
-	TRACE((L"Creation Time : 0x%08x", dwCurrentData));
-	pData += 4;
-	dwCurrentData = MAKE_DWORD(pData);
-
-	TRACE((L"Modification Time : 0x%08x", dwCurrentData));
-	pData += 4;
-	dwCurrentData = MAKE_DWORD(pData);
-
-	TRACE((L"Track ID : 0x%08x", dwCurrentData));
-	pData += 4;
-	dwCurrentData = MAKE_DWORD(pData);
-
-	TRACE((L"Reserved : 0x%08x", dwCurrentData));
-	pData += 4;
-	dwCurrentData = MAKE_DWORD(pData);
-
-	TRACE((L"Duration : 0x%08x", dwCurrentData));
-	pData += 4;
-	dwCurrentData = MAKE_DWORD(pData);
-
-	TRACE((L"Reserved : 0x%08x", dwCurrentData));
-	pData += 4;
-	dwCurrentData = MAKE_DWORD(pData);
-
-	TRACE((L"Reserved : 0x%08x", dwCurrentData));
-	pData += 4;
-	dwCurrentData = MAKE_DWORD(pData);*/
-
-	return hr;
-}
-
-HRESULT CH264AtomParser::ReadEditAtoms(BYTE* pData, const DWORD dwAtomEditSize){
-
-	HRESULT hr = S_OK;
+	// The Edit List Box provides the initial CT value if it is non-empty (non-zero).
 
 	DWORD dwAtomSize;
 	DWORD dwAtomType;
@@ -525,12 +717,13 @@ HRESULT CH264AtomParser::ReadEditAtoms(BYTE* pData, const DWORD dwAtomEditSize){
 	dwAtomType = MAKE_DWORD(pData + 4);
 
 	IF_FAILED_RETURN(hr = (dwAtomType == ATOM_TYPE_ELST ? S_OK : E_FAIL));
+	// todo : check dwAtomSize 0/1
 	IF_FAILED_RETURN(hr = (dwAtomSize > dwAtomEditSize ? E_FAIL : S_OK));
 
 	// skip atom : size + type
 	pData += 8;
 
-	BYTE btVersion = *pData;
+	BYTE btVersion = *pData >> 6;
 
 	// todo : version 1 (0x01) -> Track duration and Media time are MAKE_DWORD64
 	IF_FAILED_RETURN(hr = (btVersion != 0x00 ? E_FAIL : S_OK));
@@ -540,33 +733,34 @@ HRESULT CH264AtomParser::ReadEditAtoms(BYTE* pData, const DWORD dwAtomEditSize){
 
 	const DWORD dwEntries = MAKE_DWORD(pData);
 
-	// todo : check dwAtomSize with (dwEntries * 12)
+	DWORD dwTotalSize = btVersion ? (dwEntries * 20) : (dwEntries * 12);
+
+	IF_FAILED_RETURN(hr = (dwTotalSize <= (dwAtomSize - 16) ? S_OK : E_FAIL));
 
 	for(DWORD dwCount = 0; dwCount < dwEntries; dwCount++){
 
-		/*
-		pData += 4;
-		// Track duration
-		pData += 4;
-		// Media time
-		pData += 4;
-		// Media rate
-		*/
+		EDIT_INFO sEditInfo = {0};
 
-		pData += 12;
+		pData += 4;
+		sEditInfo.dwSegmentDuration = MAKE_DWORD(pData);
+		pData += 4;
+		sEditInfo.dwMediaTime = MAKE_DWORD(pData);
+		pData += 4;
+		sEditInfo.dwMediaRate = MAKE_DWORD(pData);
+
+		vEditList.push_back(sEditInfo);
 	}
 
 	return hr;
 }
 
-HRESULT CH264AtomParser::ReadMediaAtom(BYTE* pData, const DWORD dwAtomMovieHeaderSize){
+HRESULT CH264AtomParser::ParseMediaAtom(TRACK_INFO& TrackInfo, BYTE* pData, const DWORD dwAtomMovieHeaderSize){
 
 	HRESULT hr = S_OK;
 
 	DWORD dwAtomSize;
 	DWORD dwAtomType;
 	DWORD dwByteDone = 0;
-	BOOL bIsVideoHandler = FALSE;
 
 	while(dwAtomMovieHeaderSize - dwByteDone >= ATOM_MIN_SIZE_HEADER){
 
@@ -578,16 +772,20 @@ HRESULT CH264AtomParser::ReadMediaAtom(BYTE* pData, const DWORD dwAtomMovieHeade
 
 		IF_FAILED_RETURN(hr = (dwAtomSize > dwAtomMovieHeaderSize - dwByteDone ? E_FAIL : S_OK));
 
-		if(!m_bHasVideoOffset && dwAtomType == ATOM_TYPE_HDLR){
+		switch(dwAtomType){
 
-			IF_FAILED_RETURN(hr = (dwAtomSize < 20 ? E_FAIL : S_OK));
+			case ATOM_TYPE_HDLR:
+				IF_FAILED_RETURN(hr = (dwAtomSize < 32 ? E_FAIL : S_OK));
+				TrackInfo.dwTypeHandler = MAKE_DWORD(pData + 16);
+				break;
 
-			if(MAKE_DWORD(pData + 16) == HANDLER_TYPE_VIDEO)
-				bIsVideoHandler = TRUE;
-		}
-		else if(!m_bHasVideoOffset && bIsVideoHandler && dwAtomType == ATOM_TYPE_MINF){
+			case ATOM_TYPE_MINF:
+				IF_FAILED_RETURN(hr = ParseMediaInfoHeader(TrackInfo, pData + ATOM_MIN_SIZE_HEADER, dwAtomSize - ATOM_MIN_SIZE_HEADER));
+				break;
 
-			IF_FAILED_RETURN(hr = ReadVideoMediaInfoHeader(pData + ATOM_MIN_SIZE_HEADER, dwAtomSize - ATOM_MIN_SIZE_HEADER));
+			case ATOM_TYPE_MDHD:
+				IF_FAILED_RETURN(hr = ParseMediaHeader(TrackInfo, pData + ATOM_MIN_SIZE_HEADER, dwAtomSize - ATOM_MIN_SIZE_HEADER));
+				break;
 		}
 
 		dwByteDone += dwAtomSize;
@@ -597,7 +795,7 @@ HRESULT CH264AtomParser::ReadMediaAtom(BYTE* pData, const DWORD dwAtomMovieHeade
 	return hr;
 }
 
-HRESULT CH264AtomParser::ReadVideoMediaInfoHeader(BYTE* pData, const DWORD dwAtomMediaHeaderSize){
+HRESULT CH264AtomParser::ParseMediaInfoHeader(TRACK_INFO& TrackInfo, BYTE* pData, const DWORD dwAtomMediaHeaderSize){
 
 	HRESULT hr = S_OK;
 
@@ -615,9 +813,20 @@ HRESULT CH264AtomParser::ReadVideoMediaInfoHeader(BYTE* pData, const DWORD dwAto
 
 		IF_FAILED_RETURN(hr = (dwAtomSize > dwAtomMediaHeaderSize - dwByteDone ? E_FAIL : S_OK));
 
-		if(dwAtomType == ATOM_TYPE_STBL){
+		switch(dwAtomType){
 
-			IF_FAILED_RETURN(hr = ReadSampleTableHeader(pData + ATOM_MIN_SIZE_HEADER, dwAtomSize - ATOM_MIN_SIZE_HEADER));
+			case ATOM_TYPE_STBL:
+				IF_FAILED_RETURN(hr = ParseSampleTableHeader(TrackInfo, pData + ATOM_MIN_SIZE_HEADER, dwAtomSize - ATOM_MIN_SIZE_HEADER));
+				break;
+
+			case ATOM_TYPE_VMHD:
+			case ATOM_TYPE_SMHD:
+			case ATOM_TYPE_GMHD:
+			case ATOM_TYPE_DINF:
+			case ATOM_TYPE_NMHD:
+			case ATOM_TYPE_HMHD:
+			case ATOM_TYPE_HDLR:
+				break;
 		}
 
 		dwByteDone += dwAtomSize;
@@ -627,7 +836,45 @@ HRESULT CH264AtomParser::ReadVideoMediaInfoHeader(BYTE* pData, const DWORD dwAto
 	return hr;
 }
 
-HRESULT CH264AtomParser::ReadSampleTableHeader(BYTE* pData, const DWORD dwAtomSampleHeaderSize){
+HRESULT CH264AtomParser::ParseMediaHeader(TRACK_INFO& TrackInfo, BYTE* pData, const DWORD dwAtomMediaHeaderSize){
+
+	HRESULT hr;
+
+	BYTE btVersion = *pData;
+
+	DWORD dwTotalSize = btVersion ? 36 : 24;
+
+	IF_FAILED_RETURN(hr = (dwTotalSize == dwAtomMediaHeaderSize ? S_OK : E_FAIL));
+
+	// Skip Version/Flag
+	pData += 4;
+
+	// Skip Creation time and Modification time
+	if(btVersion == 0x01)
+		pData += 16;
+	else
+		pData += 8;
+
+	TrackInfo.dwTimeScale = MAKE_DWORD(pData);
+	pData += 4;
+
+	if(btVersion == 0x01){
+
+		TrackInfo.ui64VideoDuration = MAKE_DWORD64(pData);
+		pData += 8;
+	}
+	else{
+
+		TrackInfo.ui64VideoDuration = MAKE_DWORD(pData);
+		pData += 4;
+	}
+
+	// Pad/Langage/pre_defined
+
+	return hr;
+}
+
+HRESULT CH264AtomParser::ParseSampleTableHeader(TRACK_INFO& TrackInfo, BYTE* pData, const DWORD dwAtomSampleHeaderSize){
 
 	HRESULT hr = S_OK;
 
@@ -645,38 +892,45 @@ HRESULT CH264AtomParser::ReadSampleTableHeader(BYTE* pData, const DWORD dwAtomSa
 
 		IF_FAILED_RETURN(hr = (dwAtomSize > dwAtomSampleHeaderSize - dwByteDone ? E_FAIL : S_OK));
 
-		if(dwAtomType == ATOM_TYPE_STSD){
+		switch(dwAtomType){
 
-			IF_FAILED_RETURN(hr = ReadSampleDescHeader(pData + ATOM_MIN_SIZE_HEADER, dwAtomSize - ATOM_MIN_SIZE_HEADER));
-		}
-		else if(dwAtomType == ATOM_TYPE_STTS){
+			case ATOM_TYPE_STSD:
+				IF_FAILED_RETURN(hr = ParseSampleDescHeader(TrackInfo, pData + ATOM_MIN_SIZE_HEADER, dwAtomSize - ATOM_MIN_SIZE_HEADER));
+				break;
 
-			IF_FAILED_RETURN(hr = ReadSampleTimeHeader(pData + ATOM_MIN_SIZE_HEADER, dwAtomSize - ATOM_MIN_SIZE_HEADER));
-		}
-		else if(dwAtomType == ATOM_TYPE_STSS){
+			case ATOM_TYPE_STTS:
+				IF_FAILED_RETURN(hr = ParseSampleTimeHeader(TrackInfo.vTimeSample, pData + ATOM_MIN_SIZE_HEADER, dwAtomSize - ATOM_MIN_SIZE_HEADER));
+				break;
 
-			IF_FAILED_RETURN(hr = ReadSyncSampleHeader(pData + ATOM_MIN_SIZE_HEADER, dwAtomSize - ATOM_MIN_SIZE_HEADER));
-		}
-		else if(dwAtomType == ATOM_TYPE_CTTS){
+			case ATOM_TYPE_STSS:
+				IF_FAILED_RETURN(hr = ParseSyncSampleHeader(TrackInfo.vSyncSamples, pData + ATOM_MIN_SIZE_HEADER, dwAtomSize - ATOM_MIN_SIZE_HEADER));
+				break;
 
-			IF_FAILED_RETURN(hr = ReadCompositionOffsetHeader(pData + ATOM_MIN_SIZE_HEADER, dwAtomSize - ATOM_MIN_SIZE_HEADER));
-		}
-		else if(dwAtomType == ATOM_TYPE_STSC){
+			case ATOM_TYPE_CTTS:
+				IF_FAILED_RETURN(hr = ParseCompositionOffsetHeader(TrackInfo.vCompositionTime, pData + ATOM_MIN_SIZE_HEADER, dwAtomSize - ATOM_MIN_SIZE_HEADER));
+				break;
 
-			IF_FAILED_RETURN(hr = ReadSampleChunckHeader(pData + ATOM_MIN_SIZE_HEADER, dwAtomSize - ATOM_MIN_SIZE_HEADER));
-		}
-		else if(dwAtomType == ATOM_TYPE_STSZ){
+			case ATOM_TYPE_STSC:
+				IF_FAILED_RETURN(hr = ParseSampleChunckHeader(TrackInfo.vChunks, pData + ATOM_MIN_SIZE_HEADER, dwAtomSize - ATOM_MIN_SIZE_HEADER));
+				break;
 
-			IF_FAILED_RETURN(hr = ReadSampleSizeHeader(pData + ATOM_MIN_SIZE_HEADER, dwAtomSize - ATOM_MIN_SIZE_HEADER));
-		}
-		else if(dwAtomType == ATOM_TYPE_STCO){
+			case ATOM_TYPE_STSZ:
+				IF_FAILED_RETURN(hr = ParseSampleSizeHeader(TrackInfo.vSamples, pData + ATOM_MIN_SIZE_HEADER, dwAtomSize - ATOM_MIN_SIZE_HEADER));
+				break;
 
-			IF_FAILED_RETURN(hr = ReadChunckOffsetHeader(pData + ATOM_MIN_SIZE_HEADER, dwAtomSize - ATOM_MIN_SIZE_HEADER));
-		}
-		else if(dwAtomType == ATOM_TYPE_SDTP){
+			case ATOM_TYPE_STCO:
+				IF_FAILED_RETURN(hr = ParseChunckOffsetHeader(TrackInfo.vChunkOffset, pData + ATOM_MIN_SIZE_HEADER, dwAtomSize - ATOM_MIN_SIZE_HEADER));
+				break;
 
-			// todo
-			//IF_FAILED_RETURN(hr = E_FAIL);
+			case ATOM_TYPE_CO64:
+				IF_FAILED_RETURN(hr = ParseChunckOffset64Header(TrackInfo.vChunkOffset, pData + ATOM_MIN_SIZE_HEADER, dwAtomSize - ATOM_MIN_SIZE_HEADER));
+				break;
+
+			case ATOM_TYPE_SDTP:
+			case ATOM_TYPE_FREE:
+			case ATOM_TYPE_SBGP:
+			case ATOM_TYPE_SGPD:
+				break;
 		}
 
 		dwByteDone += dwAtomSize;
@@ -686,7 +940,7 @@ HRESULT CH264AtomParser::ReadSampleTableHeader(BYTE* pData, const DWORD dwAtomSa
 	return hr;
 }
 
-HRESULT CH264AtomParser::ReadSampleDescHeader(BYTE* pData, const DWORD dwAtomSampleDescSize){
+HRESULT CH264AtomParser::ParseSampleDescHeader(TRACK_INFO& TrackInfo, BYTE* pData, const DWORD dwAtomSampleDescSize){
 
 	HRESULT hr;
 
@@ -698,7 +952,8 @@ HRESULT CH264AtomParser::ReadSampleDescHeader(BYTE* pData, const DWORD dwAtomSam
 
 	pData += 4;
 
-	IF_FAILED_RETURN(hr = (MAKE_DWORD(pData) == 1 ? S_OK : E_FAIL));
+	// todo : if more than one STSD. For now just get the first
+	//IF_FAILED_RETURN(hr = (MAKE_DWORD(pData) == 1 ? S_OK : E_FAIL));
 
 	pData += 4;
 
@@ -710,50 +965,31 @@ HRESULT CH264AtomParser::ReadSampleDescHeader(BYTE* pData, const DWORD dwAtomSam
 		// Todo
 		assert(dwAtomSize != 0 && dwAtomSize != 1);
 
-		if(dwAtomType == ATOM_TYPE_AVC1){
+		switch(dwAtomType){
 
-			dwByteDone += 86;
-			pData += 86;
+			case ATOM_TYPE_AVC1:
+				IF_FAILED_RETURN(hr = ParseAvc1Format(&TrackInfo.pConfig, pData, dwAtomSize));
+				break;
 
-			IF_FAILED_RETURN(hr = (dwAtomSampleDescSize - dwByteDone >= ATOM_MIN_SIZE_HEADER ? S_OK : E_FAIL));
-
-			dwAtomSize = MAKE_DWORD(pData);
-			dwAtomType = MAKE_DWORD(pData + 4);
-
-			// Rarely, ATOM_TYPE_AVCC is not the first : we should loop to find ATOM_TYPE_AVCC
-			/*if(dwAtomType != ATOM_TYPE_AVCC){
-
-				dwByteDone += dwAtomSize;
-				pData += dwAtomSize;
-				IF_FAILED_RETURN(hr = (dwByteDone <= dwAtomSampleDescSize ? S_OK : E_FAIL));
-
-				dwAtomSize = MAKE_DWORD(pData);
-				dwAtomType = MAKE_DWORD(pData + 4);
-			}*/
-
-			IF_FAILED_RETURN(hr = (dwAtomType == ATOM_TYPE_AVCC ? S_OK : E_FAIL));
-
-			dwByteDone += dwAtomSize;
-
-			IF_FAILED_RETURN(hr = (dwByteDone <= dwAtomSampleDescSize ? S_OK : E_FAIL));
-
-			// we must check pData does not exceed dwAtomSampleDescSize
-			pData += 8;
-
-			IF_FAILED_RETURN(hr = ParseConfigDescriptor(pData, dwAtomSize - 8));
-		}
-		else{
-
-			hr = E_FAIL;
+			case ATOM_TYPE_MP4V:
+			case ATOM_TYPE_MP4A:
+			case ATOM_TYPE_TEXT:
+			case ATOM_TYPE_MP4S:
+			case ATOM_TYPE_AC_3:
+			case ATOM_TYPE_RTP_:
+				break;
 		}
 
+		dwByteDone += dwAtomSize;
+
+		// todo : if more than one STSD. For now just get the first
 		break;
 	}
 
 	return hr;
 }
 
-HRESULT CH264AtomParser::ReadSampleTimeHeader(BYTE* pData, const DWORD dwAtomSampleTimeSize){
+HRESULT CH264AtomParser::ParseSampleTimeHeader(vector<TIME_INFO>& vTimeSample, BYTE* pData, const DWORD dwAtomSampleTimeSize){
 
 	HRESULT hr;
 
@@ -766,47 +1002,52 @@ HRESULT CH264AtomParser::ReadSampleTimeHeader(BYTE* pData, const DWORD dwAtomSam
 
 	IF_FAILED_RETURN(hr = ((dwTimeSamples > 0) && ((dwTimeSamples * 8) == (dwAtomSampleTimeSize - dwByteDone)) ? S_OK : E_FAIL));
 
+	vTimeSample.reserve(dwTimeSamples);
+
 	for(DWORD dwCount = 0; dwCount < dwTimeSamples; dwCount++){
 
-		/*
-		pData += 4;
-		// Sample Count
-		pData += 4;
-		// Sample Duration
-		*/
+		TIME_INFO sTimeInfo = {0};
 
-		pData += 8;
+		pData += 4;
+		sTimeInfo.dwCount = MAKE_DWORD(pData);
+		pData += 4;
+		sTimeInfo.dwOffset = MAKE_DWORD(pData);
+
+		vTimeSample.push_back(sTimeInfo);
 	}
 
 	return hr;
 }
 
-HRESULT CH264AtomParser::ReadSyncSampleHeader(BYTE* pData, const DWORD dwAtomSyncSampleSize){
+HRESULT CH264AtomParser::ParseSyncSampleHeader(vector<DWORD>& vSyncSamples, BYTE* pData, const DWORD dwAtomSyncSampleSize){
 
 	HRESULT hr;
 
 	const DWORD dwByteDone = ATOM_MIN_SIZE_HEADER;
 
-	IF_FAILED_RETURN(hr = (dwByteDone < dwAtomSyncSampleSize ? S_OK : E_FAIL));
+	IF_FAILED_RETURN(hr = (dwByteDone <= dwAtomSyncSampleSize ? S_OK : E_FAIL));
 
 	pData += 4;
 	const DWORD dwSyncSamples = MAKE_DWORD(pData);
 
-	IF_FAILED_RETURN(hr = ((dwSyncSamples > 0) && ((dwSyncSamples * 4) == (dwAtomSyncSampleSize - dwByteDone)) ? S_OK : E_FAIL));
+	if(dwSyncSamples == 0)
+		return hr;
 
-	m_vSyncSamples.reserve(dwSyncSamples);
+	IF_FAILED_RETURN(hr = ((dwSyncSamples * 4) <= (dwAtomSyncSampleSize - dwByteDone) ? S_OK : E_FAIL));
+
+	vSyncSamples.reserve(dwSyncSamples);
 
 	for(DWORD dwCount = 0; dwCount < dwSyncSamples; dwCount++){
 
 		pData += 4;
 
-		m_vSyncSamples.push_back(MAKE_DWORD(pData));
+		vSyncSamples.push_back(MAKE_DWORD(pData));
 	}
 
 	return hr;
 }
 
-HRESULT CH264AtomParser::ReadCompositionOffsetHeader(BYTE* pData, const DWORD dwAtomCompositionOffsetSize){
+HRESULT CH264AtomParser::ParseCompositionOffsetHeader(vector<TIME_INFO>& vCompositionTime, BYTE* pData, const DWORD dwAtomCompositionOffsetSize){
 
 	HRESULT hr;
 
@@ -819,24 +1060,24 @@ HRESULT CH264AtomParser::ReadCompositionOffsetHeader(BYTE* pData, const DWORD dw
 
 	IF_FAILED_RETURN(hr = ((dwCompositionOffsetCount > 0) && ((dwCompositionOffsetCount * 8) == (dwAtomCompositionOffsetSize - dwByteDone)) ? S_OK : E_FAIL));
 
-	m_vCompositionOffset.reserve(dwCompositionOffsetCount);
+	vCompositionTime.reserve(dwCompositionOffsetCount);
 
 	for(DWORD dwCount = 0; dwCount < dwCompositionOffsetCount; dwCount++){
 
-		COMPOSITION_INFO sCompoInfo = {0};
+		TIME_INFO sTimeInfo = {0};
 
 		pData += 4;
-		sCompoInfo.dwCount = MAKE_DWORD(pData);
+		sTimeInfo.dwCount = MAKE_DWORD(pData);
 		pData += 4;
-		sCompoInfo.dwOffset = MAKE_DWORD(pData);
+		sTimeInfo.dwOffset = MAKE_DWORD(pData);
 
-		m_vCompositionOffset.push_back(sCompoInfo);
+		vCompositionTime.push_back(sTimeInfo);
 	}
 
 	return hr;
 }
 
-HRESULT CH264AtomParser::ReadSampleChunckHeader(BYTE* pData, const DWORD dwAtomSampleChunckSize){
+HRESULT CH264AtomParser::ParseSampleChunckHeader(vector<CHUNCK_INFO>& vChunks, BYTE* pData, const DWORD dwAtomSampleChunckSize){
 
 	HRESULT hr;
 
@@ -847,7 +1088,9 @@ HRESULT CH264AtomParser::ReadSampleChunckHeader(BYTE* pData, const DWORD dwAtomS
 	pData += 4;
 	const DWORD dwSampleChunckSize = MAKE_DWORD(pData);
 
-	IF_FAILED_RETURN(hr = ((dwSampleChunckSize > 0) && ((dwSampleChunckSize * 12) == (dwAtomSampleChunckSize - dwByteDone)) ? S_OK : E_FAIL));
+	IF_FAILED_RETURN(hr = ((dwSampleChunckSize > 0) && ((dwSampleChunckSize * 12) <= (dwAtomSampleChunckSize - dwByteDone)) ? S_OK : E_FAIL));
+
+	vChunks.reserve(dwSampleChunckSize);
 
 	for(DWORD dwCount = 0; dwCount < dwSampleChunckSize; dwCount++){
 
@@ -862,91 +1105,178 @@ HRESULT CH264AtomParser::ReadSampleChunckHeader(BYTE* pData, const DWORD dwAtomS
 		pData += 4;
 		sChunckInfo.dwSampleDescId = MAKE_DWORD(pData);
 
-		m_vChunks.push_back(sChunckInfo);
+		vChunks.push_back(sChunckInfo);
 	}
 
 	return hr;
 }
 
-HRESULT CH264AtomParser::ReadSampleSizeHeader(BYTE* pData, const DWORD dwAtomSampleSize){
+HRESULT CH264AtomParser::ParseSampleSizeHeader(vector<SAMPLE_INFO>& vSamples, BYTE* pData, const DWORD dwAtomSampleSize){
 
 	HRESULT hr;
 
 	DWORD dwSampleSize;
 	const DWORD dwByteDone = ATOM_MIN_SIZE_HEADER + 4;
 
-	IF_FAILED_RETURN(hr = (dwByteDone < dwAtomSampleSize ? S_OK : E_FAIL));
+	IF_FAILED_RETURN(hr = (dwByteDone <= dwAtomSampleSize ? S_OK : E_FAIL));
 
 	// Skip version + flags
 	pData += 4;
 	dwSampleSize = MAKE_DWORD(pData);
 
 	// Todo : if not 0, all samples same size
-	IF_FAILED_RETURN(hr = (dwSampleSize == 0 ? S_OK : E_FAIL));
+	//IF_FAILED_RETURN(hr = (dwSampleSize == 0 ? S_OK : E_FAIL));
+	if(dwSampleSize != 0){
+
+		// todo
+		// Fixed samples size
+		/*pData += 4;
+		DWORD dwNumSample = MAKE_DWORD(pData);*/
+
+		return hr;
+	}
 
 	pData += 4;
 	dwSampleSize = MAKE_DWORD(pData);
 
-	IF_FAILED_RETURN(hr = ((dwSampleSize > 0) && ((dwSampleSize * 4) == (dwAtomSampleSize - dwByteDone)) ? S_OK : E_FAIL));
+	IF_FAILED_RETURN(hr = ((dwSampleSize > 0) && ((dwSampleSize * 4) <= (dwAtomSampleSize - dwByteDone)) ? S_OK : E_FAIL));
 
 	pData += 4;
-	m_vSamples.reserve(dwSampleSize);
+
+	vSamples.reserve(dwSampleSize);
 
 	for(DWORD dwCount = 0; dwCount < dwSampleSize; dwCount++){
 
 		SAMPLE_INFO sSampleInfo = {0};
 		sSampleInfo.dwSize = MAKE_DWORD(pData);
 
-		m_vSamples.push_back(sSampleInfo);
+		vSamples.push_back(sSampleInfo);
 		pData += 4;
 	}
 
 	return hr;
 }
 
-HRESULT CH264AtomParser::ReadChunckOffsetHeader(BYTE* pData, const DWORD dwAtomChunckOffsetSize){
+HRESULT CH264AtomParser::ParseChunckOffsetHeader(vector<DWORD>& vChunkOffset, BYTE* pData, const DWORD dwAtomChunckOffsetSize){
 
 	HRESULT hr;
 
 	const DWORD dwByteDone = ATOM_MIN_SIZE_HEADER;
 
-	IF_FAILED_RETURN(hr = (dwByteDone < dwAtomChunckOffsetSize ? S_OK : E_FAIL));
+	IF_FAILED_RETURN(hr = (dwByteDone <= dwAtomChunckOffsetSize ? S_OK : E_FAIL));
 
 	pData += 4;
 
 	const DWORD dwChuncks = MAKE_DWORD(pData);
 
-	IF_FAILED_RETURN(hr = ((dwChuncks * 4) == (dwAtomChunckOffsetSize - dwByteDone) ? S_OK : E_FAIL));
+	IF_FAILED_RETURN(hr = ((dwChuncks * 4) <= (dwAtomChunckOffsetSize - dwByteDone) ? S_OK : E_FAIL));
 
-	m_vChunkOffset.reserve(dwChuncks);
+	vChunkOffset.reserve(dwChuncks);
 
 	for(DWORD dwCount = 0; dwCount < dwChuncks; dwCount++){
 
 		pData += 4;
-		m_vChunkOffset.push_back(MAKE_DWORD(pData));
+		vChunkOffset.push_back(MAKE_DWORD(pData));
 	}
-
-	m_bHasVideoOffset = TRUE;
 
 	return hr;
 }
 
-HRESULT CH264AtomParser::ParseConfigDescriptor(BYTE* pData, const DWORD /*dwSize*/){
+HRESULT CH264AtomParser::ParseChunckOffset64Header(vector<DWORD>& vChunkOffset, BYTE* pData, const DWORD dwAtomChunckOffsetSize){
 
 	HRESULT hr;
-	BYTE m_btNaluSize[4] = {0x00, 0x00, 0x00, 0x00};
 
-	IF_FAILED_RETURN(hr = (m_pSyncHeader.GetBufferSize() == 0 ? S_OK : E_FAIL));
+	const DWORD dwByteDone = ATOM_MIN_SIZE_HEADER;
+
+	IF_FAILED_RETURN(hr = (dwByteDone <= dwAtomChunckOffsetSize ? S_OK : E_FAIL));
 
 	pData += 4;
 
+	const DWORD dwChuncks = MAKE_DWORD(pData);
+
+	IF_FAILED_RETURN(hr = ((dwChuncks * 8) <= (dwAtomChunckOffsetSize - dwByteDone) ? S_OK : E_FAIL));
+
+	vChunkOffset.reserve(dwChuncks);
+	pData += 4;
+
+	for(DWORD dwCount = 0; dwCount < dwChuncks; dwCount++){
+
+		UINT64 uiTest = MAKE_DWORD64(pData);
+		assert(uiTest <= ULONG_MAX);
+		vChunkOffset.push_back((DWORD)uiTest);
+		pData += 8;
+	}
+
+	return hr;
+}
+
+HRESULT CH264AtomParser::ParseAvc1Format(CMFLightBuffer** ppConfig, const BYTE* pData, const DWORD dwAvc1AtomSize){
+
+	HRESULT hr;
+	DWORD dwByteDone = 86;
+	pData += 86;
+
+	IF_FAILED_RETURN(hr = (dwAvc1AtomSize - dwByteDone >= ATOM_MIN_SIZE_HEADER ? S_OK : E_FAIL));
+
+	DWORD dwAtomSize = MAKE_DWORD(pData);
+	DWORD dwAtomType = MAKE_DWORD(pData + 4);
+
+	// Rarely, ATOM_TYPE_AVCC is not the first : we should loop to find ATOM_TYPE_AVCC
+	if(dwAtomType != ATOM_TYPE_AVCC){
+
+		// todo : usually pasp atom
+
+		dwByteDone += dwAtomSize;
+		pData += dwAtomSize;
+		IF_FAILED_RETURN(hr = (dwByteDone <= dwAvc1AtomSize ? S_OK : E_FAIL));
+
+		dwAtomSize = MAKE_DWORD(pData);
+		dwAtomType = MAKE_DWORD(pData + 4);
+	}
+
+	IF_FAILED_RETURN(hr = (dwAtomType == ATOM_TYPE_AVCC ? S_OK : E_FAIL));
+
+	dwByteDone += dwAtomSize;
+
+	IF_FAILED_RETURN(hr = (dwByteDone <= dwAvc1AtomSize ? S_OK : E_FAIL));
+
+	// we must check pData does not exceed dwAtomSampleDescSize
+	pData += 8;
+
+	IF_FAILED_RETURN(hr = ParseVideoConfigDescriptor(ppConfig, pData, dwAtomSize - 8));
+
+	// todo : check size to see if other atom
+
+	return hr;
+}
+
+HRESULT CH264AtomParser::ParseVideoConfigDescriptor(CMFLightBuffer** ppConfig, const BYTE* pData, const DWORD /*dwSize*/){
+
+	HRESULT hr;
+	CMFLightBuffer* pConfig = NULL;
+	BYTE m_btNaluSize[4] = {0x00, 0x00, 0x00, 0x00};
+	int iDecrease;
+	DWORD dwLenght;
+	DWORD dwLastLenght;
+
 	// we must check pData does not exceed dwSize
+	// todo : what are we skipping ?
+	pData += 4;
+
+	// todo : expect all stream same NaluLenghtSize
 	m_iNaluLenghtSize = (*pData++ & 0x03) + 1;
 
-	IF_FAILED_RETURN(hr = ((m_iNaluLenghtSize != 1 && m_iNaluLenghtSize != 2 && m_iNaluLenghtSize != 4) ? E_FAIL : S_OK));
+	// todo : m_iNaluLenghtSize == 1
+	// IF_FAILED_RETURN(((m_iNaluLenghtSize != 1 && m_iNaluLenghtSize != 2 && m_iNaluLenghtSize != 4) ? E_FAIL : S_OK));
+	IF_FAILED_RETURN(((m_iNaluLenghtSize != 2 && m_iNaluLenghtSize != 4) ? E_FAIL : S_OK));
 
-	IF_FAILED_RETURN(hr = m_pSyncHeader.Initialize(m_iNaluLenghtSize));
-	memcpy(m_pSyncHeader.GetBuffer(), m_btNaluSize, m_iNaluLenghtSize);
+	pConfig = new (std::nothrow)CMFLightBuffer;
+	IF_FAILED_RETURN(hr = (pConfig ? S_OK : E_OUTOFMEMORY));
+
+	*ppConfig = pConfig;
+
+	IF_FAILED_RETURN(hr = pConfig->Initialize(m_iNaluLenghtSize));
+	memcpy(pConfig->GetBuffer(), m_btNaluSize, m_iNaluLenghtSize);
 
 	int iCurrentPos = m_iNaluLenghtSize;
 
@@ -958,35 +1288,35 @@ HRESULT CH264AtomParser::ParseConfigDescriptor(BYTE* pData, const DWORD /*dwSize
 		wParameterSetLength = ((*pData++) << 8);
 		wParameterSetLength += *pData++;
 
-		IF_FAILED_RETURN(hr = m_pSyncHeader.Reserve(wParameterSetLength));
-		memcpy(m_pSyncHeader.GetBuffer() + iCurrentPos, pData, wParameterSetLength);
+		IF_FAILED_RETURN(hr = pConfig->Reserve(wParameterSetLength));
+		memcpy(pConfig->GetBuffer() + iCurrentPos, pData, wParameterSetLength);
 
 		pData += wParameterSetLength;
 		iCurrentPos += wParameterSetLength;
 	}
 
-	DWORD dwLenght = iCurrentPos - m_iNaluLenghtSize;
+	RemoveEmulationPreventionByte(pConfig, &iDecrease);
+
+	IF_FAILED_RETURN(hr = (iDecrease < (iCurrentPos + 4) ? S_OK : E_UNEXPECTED));
+	iCurrentPos -= iDecrease;
+
+	dwLenght = iCurrentPos - m_iNaluLenghtSize;
 
 	if(m_iNaluLenghtSize == 4){
 
-		m_pSyncHeader.GetBuffer()[0] = (dwLenght >> 24) & 0xff;
-		m_pSyncHeader.GetBuffer()[1] = (dwLenght >> 16) & 0xff;
-		m_pSyncHeader.GetBuffer()[2] = (dwLenght >> 8) & 0xff;
-		m_pSyncHeader.GetBuffer()[3] = dwLenght & 0xff;
+		pConfig->GetBuffer()[0] = (dwLenght >> 24) & 0xff;
+		pConfig->GetBuffer()[1] = (dwLenght >> 16) & 0xff;
+		pConfig->GetBuffer()[2] = (dwLenght >> 8) & 0xff;
+		pConfig->GetBuffer()[3] = dwLenght & 0xff;
 	}
 	else if(m_iNaluLenghtSize == 2){
 
-		m_pSyncHeader.GetBuffer()[0] = (dwLenght >> 8) & 0xff;
-		m_pSyncHeader.GetBuffer()[1] = dwLenght & 0xff;
-	}
-	else{
-
-		// todo : size 1
-		assert(FALSE);
+		pConfig->GetBuffer()[0] = (dwLenght >> 8) & 0xff;
+		pConfig->GetBuffer()[1] = dwLenght & 0xff;
 	}
 
-	IF_FAILED_RETURN(hr = m_pSyncHeader.Reserve(m_iNaluLenghtSize));
-	memcpy(m_pSyncHeader.GetBuffer() + iCurrentPos, m_btNaluSize, m_iNaluLenghtSize);
+	IF_FAILED_RETURN(hr = pConfig->Reserve(m_iNaluLenghtSize));
+	memcpy(pConfig->GetBuffer() + iCurrentPos, m_btNaluSize, m_iNaluLenghtSize);
 	dwLenght = iCurrentPos;
 	iCurrentPos += m_iNaluLenghtSize;
 	wParameterSets = *pData++;
@@ -996,61 +1326,106 @@ HRESULT CH264AtomParser::ParseConfigDescriptor(BYTE* pData, const DWORD /*dwSize
 		wParameterSetLength = ((*pData++) << 8);
 		wParameterSetLength += *pData++;
 
-		IF_FAILED_RETURN(hr = m_pSyncHeader.Reserve(wParameterSetLength));
-		memcpy(m_pSyncHeader.GetBuffer() + iCurrentPos, pData, wParameterSetLength);
+		IF_FAILED_RETURN(hr = pConfig->Reserve(wParameterSetLength));
+		memcpy(pConfig->GetBuffer() + iCurrentPos, pData, wParameterSetLength);
 
 		pData += wParameterSetLength;
 		iCurrentPos += wParameterSetLength;
 	}
 
-	DWORD dwLastLenght = iCurrentPos - dwLenght - m_iNaluLenghtSize;
+	RemoveEmulationPreventionByte(pConfig, &iDecrease);
+
+	IF_FAILED_RETURN(hr = (iDecrease < (iCurrentPos + 4) ? S_OK : E_UNEXPECTED));
+	iCurrentPos -= iDecrease;
+
+	dwLastLenght = iCurrentPos - dwLenght - m_iNaluLenghtSize;
 
 	if(m_iNaluLenghtSize == 4){
 
-		m_pSyncHeader.GetBuffer()[dwLenght] = (dwLastLenght >> 24) & 0xff;
-		m_pSyncHeader.GetBuffer()[dwLenght + 1] = (dwLastLenght >> 16) & 0xff;
-		m_pSyncHeader.GetBuffer()[dwLenght + 2] = (dwLastLenght >> 8) & 0xff;
-		m_pSyncHeader.GetBuffer()[dwLenght + 3] = dwLastLenght & 0xff;
+		pConfig->GetBuffer()[dwLenght] = (dwLastLenght >> 24) & 0xff;
+		pConfig->GetBuffer()[dwLenght + 1] = (dwLastLenght >> 16) & 0xff;
+		pConfig->GetBuffer()[dwLenght + 2] = (dwLastLenght >> 8) & 0xff;
+		pConfig->GetBuffer()[dwLenght + 3] = dwLastLenght & 0xff;
 	}
 	else if(m_iNaluLenghtSize == 2){
 
-		m_pSyncHeader.GetBuffer()[dwLenght] = (dwLastLenght >> 8) & 0xff;
-		m_pSyncHeader.GetBuffer()[dwLenght + 1] = dwLastLenght & 0xff;
-	}
-	else{
-
-		// todo : size 1
-		assert(FALSE);
+		pConfig->GetBuffer()[dwLenght] = (dwLastLenght >> 8) & 0xff;
+		pConfig->GetBuffer()[dwLenght + 1] = dwLastLenght & 0xff;
 	}
 
 	return hr;
 }
 
-HRESULT CH264AtomParser::GetVideoFrameRate(UINT* puiNumerator, UINT* puiDenominator){
+void CH264AtomParser::RemoveEmulationPreventionByte(CMFLightBuffer* pConfig, int* piDecrease){
 
-	HRESULT hr;
+	assert(pConfig);
 
-	// FPS = (SampleCount * TimeScale) / Duration
-	// Time = Duration / TimeScale
-	// Time per Frame (100-nanosecond units) = (Time * 10000000) / SampleCount
+	DWORD dwValue;
+	DWORD dwIndex = 0;
 
-	IF_FAILED_RETURN(hr = (m_dwDuration == 0 || m_dwTimeScale == 0 || m_vSamples.size() == 0 ? E_FAIL : S_OK));
+	const DWORD dwSize = pConfig->GetBufferSize();
+	BYTE* pData = pConfig->GetBuffer();
+	*piDecrease = 0;
 
-	//double dFPS = (m_vSamples.size() * m_dwTimeScale) / (double)m_dwDuration;
-	double dTime = (m_dwDuration / (double)m_dwTimeScale) * 10000000;
-	dTime /= m_vSamples.size();
+	while(dwIndex < dwSize){
 
-	// Frames per second(floating point)	Frames per second(fractional)	Average time per frame
-	// 59.94								60000 / 1001					166833
-	// 29.97								30000 / 1001					333667
-	// 23.976								24000 / 1001					417188
-	// 60									60 / 1							166667
-	// 30									30 / 1							333333
-	// 50									50 / 1							200000
-	// 25									25 / 1							400000
-	// 24									24 / 1							416667
+		dwValue = MAKE_DWORD(pData);
 
-	IF_FAILED_RETURN(hr = MFAverageTimePerFrameToFrameRate((UINT64)dTime, puiNumerator, puiDenominator));
+		if(dwValue == 0x00000300 || dwValue == 0x00000301 || dwValue == 0x00000302 || dwValue == 0x00000303){
+
+			BYTE* pDataTmp = pConfig->GetBuffer();
+
+			memcpy(pDataTmp + (dwIndex + 2), pDataTmp + (dwIndex + 3), pConfig->GetBufferSize() - (dwIndex + 2));
+			pConfig->DecreaseEndPosition();
+			*piDecrease += 1;
+		}
+		else
+		{
+			dwIndex += 1;
+			pData += 1;
+		}
+	}
+}
+
+const vector<CH264AtomParser::SAMPLE_INFO>* CH264AtomParser::GetSamples(const DWORD dwTrackId) const{
+
+	for(auto& TrackInfo : m_vTrackInfo){
+
+		if(TrackInfo.dwTrackId == dwTrackId){
+
+			return &TrackInfo.vSamples;
+		}
+	}
+
+	return NULL;
+}
+
+CMFLightBuffer* CH264AtomParser::GetConfig(const DWORD dwTrackId) const{
+
+	for(auto& TrackInfo : m_vTrackInfo){
+
+		if(TrackInfo.dwTrackId == dwTrackId){
+
+			return TrackInfo.pConfig;
+		}
+	}
+
+	return NULL;
+}
+
+HRESULT CH264AtomParser::GetFirstVideoStream(DWORD* pdwTrackId){
+
+	HRESULT hr = E_FAIL;
+
+	for(auto& TrackInfo : m_vTrackInfo){
+
+		if(TrackInfo.dwTypeHandler == HANDLER_TYPE_VIDEO){
+
+			*pdwTrackId = TrackInfo.dwTrackId;
+			hr = S_OK;
+			break;
+		}
+	}
 
 	return hr;
 }

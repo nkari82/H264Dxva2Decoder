@@ -20,7 +20,6 @@ HRESULT CDxva2Decoder::DisplayFrame(){
 		else{
 
 			hr = RenderFrame();
-			Sleep(m_dwPauseDuration);
 			break;
 		}
 	}
@@ -33,7 +32,7 @@ HRESULT CDxva2Decoder::RenderFrame(){
 	HRESULT hr = S_OK;
 	IDirect3DSurface9 *pRT = NULL;
 	DXVAHD_STREAM_DATA stream_data;
-	DWORD dwSurfaceIndex;
+	DWORD dwSurfaceIndex = 0;
 	BOOL bHasPicture = FALSE;
 	ZeroMemory(&stream_data, sizeof(DXVAHD_STREAM_DATA));
 
@@ -41,7 +40,7 @@ HRESULT CDxva2Decoder::RenderFrame(){
 
 	for(deque<PICTURE_PRESENTATION>::const_iterator it = m_dqPicturePresentation.begin(); it != m_dqPicturePresentation.end(); ++it){
 
-		if(it->TopFieldOrderCnt == 0 || it->TopFieldOrderCnt == (m_iPrevTopFieldOrderCount + 2)){
+		if(it->TopFieldOrderCnt == 0 || it->TopFieldOrderCnt == (m_iPrevTopFieldOrderCount + 2) || it->TopFieldOrderCnt == (m_iPrevTopFieldOrderCount + 1)){
 
 			dwSurfaceIndex = it->dwDXVA2Index;
 			m_iPrevTopFieldOrderCount = it->TopFieldOrderCnt;
@@ -50,6 +49,9 @@ HRESULT CDxva2Decoder::RenderFrame(){
 			break;
 		}
 	}
+
+	// Use assert to check m_dqPicturePresentation size
+	//assert(m_dqPicturePresentation.size() < NUM_DXVA2_SURFACE);
 
 	if(bHasPicture == FALSE){
 		return hr;
@@ -73,6 +75,8 @@ HRESULT CDxva2Decoder::RenderFrame(){
 	catch(HRESULT){}
 
 	SAFE_RELEASE(pRT);
+
+	Sleep(m_dwPauseDuration);
 
 	return hr;
 }
