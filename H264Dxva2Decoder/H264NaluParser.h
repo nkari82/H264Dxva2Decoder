@@ -24,8 +24,6 @@ private:
 
 	PICTURE_INFO m_Picture;
 	CBitStream m_cBitStream;
-	BOOL m_bHasSPS;
-	BOOL m_bHasPPS;
 	DWORD m_dwWidth;
 	DWORD m_dwHeight;
 	int m_iNaluLenghtSize;

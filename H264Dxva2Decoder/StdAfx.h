@@ -80,7 +80,6 @@ const DWORD H264_BUFFER_SIZE = 262144;
 #include "BitStream.h"
 #include "MFByteStream.h"
 #include "Dxva2Decoder.h"
-#include "Golomb.h"
 #include "H264NaluParser.h"
 #include "H264AtomParser.h"
 

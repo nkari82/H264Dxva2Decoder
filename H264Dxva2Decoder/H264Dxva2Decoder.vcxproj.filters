@@ -24,9 +24,6 @@
     <ClInclude Include="Dxva2Decoder.h">
       <Filter>Fichiers d%27en-tête</Filter>
     </ClInclude>
-    <ClInclude Include="Golomb.h">
-      <Filter>Fichiers d%27en-tête</Filter>
-    </ClInclude>
     <ClInclude Include="H264AtomParser.h">
       <Filter>Fichiers d%27en-tête</Filter>
     </ClInclude>
@@ -75,9 +72,6 @@
       <Filter>Fichiers sources</Filter>
     </ClCompile>
     <ClCompile Include="Dxva2Decoder_DisplayFrame.cpp">
-      <Filter>Fichiers sources</Filter>
-    </ClCompile>
-    <ClCompile Include="Golomb.cpp">
       <Filter>Fichiers sources</Filter>
     </ClCompile>
     <ClCompile Include="H264AtomParser.cpp">

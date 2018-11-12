@@ -29,7 +29,6 @@ public:
 	HRESULT Seek(const LONG);
 	HRESULT SeekHigh(LARGE_INTEGER);
 	HRESULT SeekEnd(const LONG);
-	HRESULT SeekFile(LARGE_INTEGER);
 	HRESULT Reset();
 	const BOOL IsInitialized() const{ return (m_hFile != INVALID_HANDLE_VALUE && m_pReadParam != NULL); }
 

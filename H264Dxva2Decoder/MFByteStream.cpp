@@ -327,23 +327,6 @@ HRESULT CMFByteStream::SeekEnd(const LONG lDistance){
 	return hr;
 }
 
-HRESULT CMFByteStream::SeekFile(LARGE_INTEGER liDistance){
-
-	TRACE_BYTESTREAM((L"MFByteStream::SeekFile"));
-
-	HRESULT hr;
-
-	AutoLock lock(m_CriticSection);
-
-	IF_FAILED_RETURN(hr = (m_hFile == INVALID_HANDLE_VALUE ? E_UNEXPECTED : S_OK));
-
-	DWORD dwPosition = SetFilePointer(m_hFile, liDistance.LowPart, &liDistance.HighPart, FILE_BEGIN);
-
-	IF_FAILED_RETURN(hr = (dwPosition == INVALID_SET_FILE_POINTER || GetLastError() != NO_ERROR ? E_FAIL : S_OK));
-
-	return hr;
-}
-
 HRESULT CMFByteStream::Reset(){
 
 	TRACE_BYTESTREAM((L"MFByteStream::Reset"));

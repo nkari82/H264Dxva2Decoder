@@ -5,7 +5,7 @@
 
 static const BYTE TrailingBits[9] = {0, 0x1, 0x2, 0x4, 0x8, 0x10, 0x20, 0x40, 0x80};
 
-CH264NaluParser::CH264NaluParser() : m_bHasSPS(FALSE), m_bHasPPS(FALSE), m_dwWidth(0), m_dwHeight(0), m_iNaluLenghtSize(0){
+CH264NaluParser::CH264NaluParser() : m_dwWidth(0), m_dwHeight(0), m_iNaluLenghtSize(0){
 
 	ZeroMemory(&m_Picture, sizeof(PICTURE_INFO));
 }
@@ -303,8 +303,6 @@ HRESULT CH264NaluParser::ParseSPS(){
 
 	// rbsp_trailing_bits();
 
-	m_bHasSPS = TRUE;
-
 	return hr;
 }
 
@@ -369,8 +367,6 @@ HRESULT CH264NaluParser::ParsePPS(){
 	}
 
 	int bits = m_cBitStream.BitsRemain();
-
-	m_bHasPPS = TRUE;
 
 	if(bits == 0){
 		return hr;
@@ -551,7 +547,7 @@ HRESULT CH264NaluParser::ParseCodedSlice(){
 	/*if(memory_management_control_operation == 5){
 	  prevFrameNumOffset = 0;
 	  tempPicOrderCnt = PicOrderCnt(CurrPic);
-	  TopFieldOrderCnt = TopFieldOrderCnt ?tempPicOrderCnt
+	  TopFieldOrderCnt = TopFieldOrderCnt – tempPicOrderCnt
 	}
 	else
 	*/

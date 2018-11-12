@@ -114,6 +114,7 @@ HRESULT CH264AtomParser::GetNextSample(const DWORD dwTrackId, BYTE** ppData, DWO
 	HRESULT hr;
 	DWORD dwRead;
 	DWORD dwChunkSize;
+	DWORD dwOffset;
 
 	IF_FAILED_RETURN(hr = (ppData && pSize ? S_OK : E_FAIL));
 
@@ -128,9 +129,19 @@ HRESULT CH264AtomParser::GetNextSample(const DWORD dwTrackId, BYTE** ppData, DWO
 	IF_FAILED_RETURN(hr = m_pByteStream->Reset());
 	IF_FAILED_RETURN(hr = ((*vSamples)[m_dwCurrentSample].dwSize > 4 ? S_OK : E_FAIL));
 
-	// todo : SeekHigh
-	assert(((*vSamples)[m_dwCurrentSample].dwOffset) <= LONG_MAX);
-	IF_FAILED_RETURN(hr = m_pByteStream->Seek((*vSamples)[m_dwCurrentSample].dwOffset));
+	dwOffset = (*vSamples)[m_dwCurrentSample].dwOffset;
+
+	// Perhaps just use SeekHigh
+	if(dwOffset <= LONG_MAX){
+
+		IF_FAILED_RETURN(m_pByteStream->Seek(dwOffset));
+	}
+	else{
+
+		LARGE_INTEGER liFilePosToRead = {0};
+		liFilePosToRead.QuadPart = dwOffset;
+		IF_FAILED_RETURN(m_pByteStream->SeekHigh(liFilePosToRead));
+	}
 
 	dwChunkSize = (*vSamples)[m_dwCurrentSample].dwSize;
 
@@ -199,6 +210,23 @@ HRESULT CH264AtomParser::GetVideoFrameRate(const DWORD dwTrackId, UINT* puiNumer
 
 	IF_FAILED_RETURN(hr = (ui64Time ? S_OK : E_FAIL));
 	IF_FAILED_RETURN(hr = MFAverageTimePerFrameToFrameRate(ui64Time, puiNumerator, puiDenominator));
+
+	return hr;
+}
+
+HRESULT CH264AtomParser::GetFirstVideoStream(DWORD* pdwTrackId){
+
+	HRESULT hr = E_FAIL;
+
+	for(auto& TrackInfo : m_vTrackInfo){
+
+		if(TrackInfo.dwTypeHandler == HANDLER_TYPE_VIDEO){
+
+			*pdwTrackId = TrackInfo.dwTrackId;
+			hr = S_OK;
+			break;
+		}
+	}
 
 	return hr;
 }
@@ -1267,8 +1295,8 @@ HRESULT CH264AtomParser::ParseVideoConfigDescriptor(CMFLightBuffer** ppConfig, c
 	m_iNaluLenghtSize = (*pData++ & 0x03) + 1;
 
 	// todo : m_iNaluLenghtSize == 1
-	// IF_FAILED_RETURN(((m_iNaluLenghtSize != 1 && m_iNaluLenghtSize != 2 && m_iNaluLenghtSize != 4) ? E_FAIL : S_OK));
-	IF_FAILED_RETURN(((m_iNaluLenghtSize != 2 && m_iNaluLenghtSize != 4) ? E_FAIL : S_OK));
+	// IF_FAILED_RETURN(hr = ((m_iNaluLenghtSize != 1 && m_iNaluLenghtSize != 2 && m_iNaluLenghtSize != 4) ? E_FAIL : S_OK));
+	IF_FAILED_RETURN(hr = ((m_iNaluLenghtSize != 2 && m_iNaluLenghtSize != 4) ? E_FAIL : S_OK));
 
 	pConfig = new (std::nothrow)CMFLightBuffer;
 	IF_FAILED_RETURN(hr = (pConfig ? S_OK : E_OUTOFMEMORY));
@@ -1411,21 +1439,4 @@ CMFLightBuffer* CH264AtomParser::GetConfig(const DWORD dwTrackId) const{
 	}
 
 	return NULL;
-}
-
-HRESULT CH264AtomParser::GetFirstVideoStream(DWORD* pdwTrackId){
-
-	HRESULT hr = E_FAIL;
-
-	for(auto& TrackInfo : m_vTrackInfo){
-
-		if(TrackInfo.dwTypeHandler == HANDLER_TYPE_VIDEO){
-
-			*pdwTrackId = TrackInfo.dwTrackId;
-			hr = S_OK;
-			break;
-		}
-	}
-
-	return hr;
 }
