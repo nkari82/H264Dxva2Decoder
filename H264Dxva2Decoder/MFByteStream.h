@@ -10,16 +10,17 @@ public:
 
 	static HRESULT CreateInstance(CMFByteStream**);
 
-	// IUnknown
+	// IUnknown - MFByteStream.cpp
 	STDMETHODIMP QueryInterface(REFIID, void**);
 	STDMETHODIMP_(ULONG) AddRef();
 	STDMETHODIMP_(ULONG) Release();
 
-	// IMFAsyncCallback
+	// IMFAsyncCallback - MFByteStream.cpp
 	STDMETHODIMP GetParameters(DWORD*, DWORD*){ TRACE_BYTESTREAM((L"MFByteStream::GetParameters")); return E_NOTIMPL; }
 	STDMETHODIMP Invoke(IMFAsyncResult*);
 
-	HRESULT Initialize(LPCWSTR, DWORD*, LARGE_INTEGER*);
+	// MFByteStream.cpp
+	HRESULT Initialize(LPCWSTR);
 	HRESULT Start();
 	void Close();
 	HRESULT Read(BYTE*, const DWORD, DWORD*);
@@ -34,17 +35,14 @@ public:
 
 private:
 
+	// MFByteStream.cpp
 	CMFByteStream();
 	virtual ~CMFByteStream(){ TRACE_BYTESTREAM((L"MFByteStream::DTOR")); Close(); }
 
 	CriticSection m_CriticSection;
-
 	volatile long m_nRefCount;
-
 	wstring m_wszFile;
 	HANDLE m_hFile;
-	LARGE_INTEGER m_liFileSize;
-
 	CMFReadParam* m_pReadParam;
 };
 

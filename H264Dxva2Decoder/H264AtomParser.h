@@ -111,7 +111,7 @@ private:
 
 	HRESULT ParseAvc1Format(CMFLightBuffer**, const BYTE*, const DWORD);
 	HRESULT ParseVideoConfigDescriptor(CMFLightBuffer**, const BYTE*, const DWORD);
-	void RemoveEmulationPreventionByte(CMFLightBuffer*, int*);
+	void RemoveEmulationPreventionByte(CMFLightBuffer*, int*, const DWORD);
 
 	const vector<SAMPLE_INFO>* GetSamples(const DWORD) const;
 	CMFLightBuffer* GetConfig(const DWORD) const;

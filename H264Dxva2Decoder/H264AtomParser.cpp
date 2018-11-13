@@ -25,11 +25,7 @@ HRESULT CH264AtomParser::Initialize(LPCWSTR wszFile){
 	try{
 
 		IF_FAILED_THROW(hr = CMFByteStream::CreateInstance(&pByteStream));
-
-		DWORD dwFlags;
-		LARGE_INTEGER liFileSize;
-
-		IF_FAILED_THROW(hr = pByteStream->Initialize(wszFile, &dwFlags, &liFileSize));
+		IF_FAILED_THROW(hr = pByteStream->Initialize(wszFile));
 		IF_FAILED_THROW(hr = m_cMp4ParserBuffer.Initialize(READ_SIZE));
 
 		m_pByteStream = pByteStream;
@@ -1291,7 +1287,7 @@ HRESULT CH264AtomParser::ParseVideoConfigDescriptor(CMFLightBuffer** ppConfig, c
 	// todo : what are we skipping ?
 	pData += 4;
 
-	// todo : expect all stream same NaluLenghtSize
+	// todo : expect all video stream same NaluLenghtSize
 	m_iNaluLenghtSize = (*pData++ & 0x03) + 1;
 
 	// todo : m_iNaluLenghtSize == 1
@@ -1323,7 +1319,7 @@ HRESULT CH264AtomParser::ParseVideoConfigDescriptor(CMFLightBuffer** ppConfig, c
 		iCurrentPos += wParameterSetLength;
 	}
 
-	RemoveEmulationPreventionByte(pConfig, &iDecrease);
+	RemoveEmulationPreventionByte(pConfig, &iDecrease, 0);
 
 	IF_FAILED_RETURN(hr = (iDecrease < (iCurrentPos + 4) ? S_OK : E_UNEXPECTED));
 	iCurrentPos -= iDecrease;
@@ -1361,7 +1357,7 @@ HRESULT CH264AtomParser::ParseVideoConfigDescriptor(CMFLightBuffer** ppConfig, c
 		iCurrentPos += wParameterSetLength;
 	}
 
-	RemoveEmulationPreventionByte(pConfig, &iDecrease);
+	RemoveEmulationPreventionByte(pConfig, &iDecrease, dwLenght);
 
 	IF_FAILED_RETURN(hr = (iDecrease < (iCurrentPos + 4) ? S_OK : E_UNEXPECTED));
 	iCurrentPos -= iDecrease;
@@ -1384,16 +1380,18 @@ HRESULT CH264AtomParser::ParseVideoConfigDescriptor(CMFLightBuffer** ppConfig, c
 	return hr;
 }
 
-void CH264AtomParser::RemoveEmulationPreventionByte(CMFLightBuffer* pConfig, int* piDecrease){
+void CH264AtomParser::RemoveEmulationPreventionByte(CMFLightBuffer* pConfig, int* piDecrease, const DWORD dwPosition){
 
 	assert(pConfig);
 
 	DWORD dwValue;
-	DWORD dwIndex = 0;
-
+	DWORD dwIndex = dwPosition;
 	const DWORD dwSize = pConfig->GetBufferSize();
 	BYTE* pData = pConfig->GetBuffer();
 	*piDecrease = 0;
+
+	assert(dwIndex < dwSize);
+	pData += dwIndex;
 
 	while(dwIndex < dwSize){
 
@@ -1406,6 +1404,9 @@ void CH264AtomParser::RemoveEmulationPreventionByte(CMFLightBuffer* pConfig, int
 			memcpy(pDataTmp + (dwIndex + 2), pDataTmp + (dwIndex + 3), pConfig->GetBufferSize() - (dwIndex + 2));
 			pConfig->DecreaseEndPosition();
 			*piDecrease += 1;
+
+			dwIndex += 3;
+			pData += 3;
 		}
 		else
 		{
