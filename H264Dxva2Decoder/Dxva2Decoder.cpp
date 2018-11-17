@@ -89,7 +89,7 @@ HRESULT CDxva2Decoder::InitForm(const UINT uiWidth, const UINT uiHeight){
 	return S_OK;
 }
 
-HRESULT CDxva2Decoder::InitDXVA2(const UINT uiWidth, const UINT uiHeight, const UINT uiNumerator, const UINT uiDenominator){
+HRESULT CDxva2Decoder::InitDXVA2(const SPS_DATA& sps, const UINT uiWidth, const UINT uiHeight, const UINT uiNumerator, const UINT uiDenominator){
 
 	HRESULT hr;
 
@@ -149,7 +149,7 @@ HRESULT CDxva2Decoder::InitDXVA2(const UINT uiWidth, const UINT uiHeight, const 
 
 	IF_FAILED_RETURN(hr = InitDecoderService());
 
-	IF_FAILED_RETURN(hr = InitVideoDecoder());
+	IF_FAILED_RETURN(hr = InitVideoDecoder(sps));
 
 	IF_FAILED_RETURN(hr = InitVideoProcessor());
 
@@ -158,7 +158,7 @@ HRESULT CDxva2Decoder::InitDXVA2(const UINT uiWidth, const UINT uiHeight, const 
 
 void CDxva2Decoder::OnRelease(){
 
-	TRACE((L"PicturePresent = %u - Poc = %d - ShortRef = %d - LongRef = %d - PicturePresentation = %d\r\n", m_dwPicturePresent, m_dqPoc.size(), m_dqShortRef.size(), m_dqLongRef.size(), m_dqPicturePresentation.size()));
+	TRACE((L"PicturePresent = %u - Poc = %d - PicturePresentation = %d\r\n", m_dwPicturePresent, m_dqPoc.size(), m_dqPicturePresentation.size()));
 
 	memset(&m_Dxva2Desc, 0, sizeof(DXVA2_VideoDesc));
 	memset(&m_ExecuteParams, 0, sizeof(DXVA2_DecodeExecuteParams));
@@ -194,8 +194,6 @@ void CDxva2Decoder::OnRelease(){
 	SAFE_RELEASE(m_pDXVAVP);
 
 	m_dqPoc.clear();
-	m_dqShortRef.clear();
-	m_dqLongRef.clear();
 	m_dqPicturePresentation.clear();
 
 	if(m_pDevice9Ex){
@@ -250,7 +248,6 @@ HRESULT CDxva2Decoder::DecodeFrame(CMFBuffer& cMFNaluBuffer, const PICTURE_INFO&
 		IF_FAILED_THROW(hr = m_pVideoDecoder->ReleaseBuffer(DXVA2_PictureParametersBufferType));
 
 		// QuantaMatrix
-		InitQuantaMatrixParams(Picture.pps);
 		IF_FAILED_THROW(hr = m_pVideoDecoder->GetBuffer(DXVA2_InverseQuantizationMatrixBufferType, &pBuffer, &uiSize));
 		assert(sizeof(DXVA_Qmatrix_H264) <= uiSize);
 		memcpy(pBuffer, &m_H264QuantaMatrix, sizeof(DXVA_Qmatrix_H264));
@@ -338,7 +335,7 @@ HRESULT CDxva2Decoder::InitDecoderService(){
 	return hr;
 }
 
-HRESULT CDxva2Decoder::InitVideoDecoder(){
+HRESULT CDxva2Decoder::InitVideoDecoder(const SPS_DATA& sps){
 
 	HRESULT hr;
 	DXVA2_ConfigPictureDecode* pConfigs = NULL;
@@ -388,17 +385,17 @@ HRESULT CDxva2Decoder::InitVideoDecoder(){
 
 	IF_FAILED_RETURN(hr = m_pDecoderService->CreateVideoDecoder(m_gH264Vld, &m_Dxva2Desc, &m_pConfigs[uiIndex], m_pSurface9, NUM_DXVA2_SURFACE, &m_pVideoDecoder));
 
-	InitDxva2Struct();
+	InitDxva2Struct(sps);
 
 	return hr;
 }
 
-void CDxva2Decoder::InitDxva2Struct(){
+void CDxva2Decoder::InitDxva2Struct(const SPS_DATA& sps){
 
 	memset(&m_ExecuteParams, 0, sizeof(DXVA2_DecodeExecuteParams));
 	memset(m_BufferDesc, 0, 4 * sizeof(DXVA2_DecodeBufferDesc));
 	memset(&m_H264PictureParams, 0, sizeof(DXVA_PicParams_H264));
-	memset(&m_H264QuantaMatrix, 0, sizeof(DXVA_Qmatrix_H264));
+	InitQuantaMatrixParams(sps);
 	memset(m_H264SliceInfo, 0, MAX_SLICE * sizeof(DXVA_Slice_H264_Short));
 
 	m_BufferDesc[0].CompressedBufferType = DXVA2_PictureParametersBufferType;
@@ -422,8 +419,6 @@ void CDxva2Decoder::InitPictureParams(const DWORD dwIndex, const PICTURE_INFO& P
 
 	if(Picture.NalUnitType == NAL_UNIT_CODED_SLICE_IDR){
 		m_dqPoc.clear();
-		m_dqShortRef.clear();
-		m_dqLongRef.clear();
 	}
 
 	m_H264PictureParams.wFrameWidthInMbsMinus1 = (USHORT)Picture.sps.pic_width_in_mbs_minus1;
@@ -505,41 +500,17 @@ void CDxva2Decoder::InitPictureParams(const DWORD dwIndex, const PICTURE_INFO& P
 	HandlePOC(dwIndex, Picture);
 }
 
-void CDxva2Decoder::InitQuantaMatrixParams(const PPS_DATA& /*pps*/){
+void CDxva2Decoder::InitQuantaMatrixParams(const SPS_DATA& sps){
 
-	/*static const BYTE zigzag_scan[16 + 1] = {
-		0 + 0 * 4, 1 + 0 * 4, 0 + 1 * 4, 0 + 2 * 4,
-		1 + 1 * 4, 2 + 0 * 4, 3 + 0 * 4, 2 + 1 * 4,
-		1 + 2 * 4, 0 + 3 * 4, 1 + 3 * 4, 2 + 2 * 4,
-		3 + 1 * 4, 3 + 2 * 4, 2 + 3 * 4, 3 + 3 * 4,
-	};
+	if(sps.bHasCustomScalingList == FALSE){
 
-	static const BYTE ff_zigzag_direct[64] = {
-		0, 1, 8, 16, 9, 2, 3, 10,
-		17, 24, 32, 25, 18, 11, 4, 5,
-		12, 19, 26, 33, 40, 48, 41, 34,
-		27, 20, 13, 6, 7, 14, 21, 28,
-		35, 42, 49, 56, 57, 50, 43, 36,
-		29, 22, 15, 23, 30, 37, 44, 51,
-		58, 59, 52, 45, 38, 31, 39, 46,
-		53, 60, 61, 54, 47, 55, 62, 63
-	};*/
-
-	memset(m_H264QuantaMatrix.bScalingLists4x4, 16, sizeof(m_H264QuantaMatrix.bScalingLists4x4));
-	memset(m_H264QuantaMatrix.bScalingLists8x8, 16, sizeof(m_H264QuantaMatrix.bScalingLists8x8));
-
-	/*for(int i = 0; i < 6; i++){
-
-	  for(int j = 0; j < 16; j++){
-
-		m_H264QuantaMatrix.bScalingLists4x4[i][j] = pps.bScalingLists4x4[i][zigzag_scan[j]];
-	  }
+		memset(&m_H264QuantaMatrix, 16, sizeof(DXVA_Qmatrix_H264));
 	}
+	else{
 
-	for(int i = 0; i < 64; i++) {
-	  m_H264QuantaMatrix.bScalingLists8x8[0][i] = pps.bScalingLists8x8[0][ff_zigzag_direct[i]];
-	  m_H264QuantaMatrix.bScalingLists8x8[1][i] = pps.bScalingLists8x8[1][ff_zigzag_direct[i]];
-	}*/
+		memcpy(m_H264QuantaMatrix.bScalingLists4x4, sps.ScalingList4x4, sizeof(m_H264QuantaMatrix.bScalingLists4x4));
+		memcpy(m_H264QuantaMatrix.bScalingLists8x8, sps.ScalingList8x8, sizeof(m_H264QuantaMatrix.bScalingLists8x8));
+	}
 }
 
 HRESULT CDxva2Decoder::AddNalUnitBufferPadding(CMFBuffer& cMFNaluBuffer, const UINT uiSize){

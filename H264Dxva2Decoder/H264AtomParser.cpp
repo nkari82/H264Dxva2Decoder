@@ -1291,8 +1291,7 @@ HRESULT CH264AtomParser::ParseVideoConfigDescriptor(CMFLightBuffer** ppConfig, c
 	m_iNaluLenghtSize = (*pData++ & 0x03) + 1;
 
 	// todo : m_iNaluLenghtSize == 1
-	// IF_FAILED_RETURN(hr = ((m_iNaluLenghtSize != 1 && m_iNaluLenghtSize != 2 && m_iNaluLenghtSize != 4) ? E_FAIL : S_OK));
-	IF_FAILED_RETURN(hr = ((m_iNaluLenghtSize != 2 && m_iNaluLenghtSize != 4) ? E_FAIL : S_OK));
+	IF_FAILED_RETURN(hr = ((m_iNaluLenghtSize != 1 && m_iNaluLenghtSize != 2 && m_iNaluLenghtSize != 4) ? E_FAIL : S_OK));
 
 	pConfig = new (std::nothrow)CMFLightBuffer;
 	IF_FAILED_RETURN(hr = (pConfig ? S_OK : E_OUTOFMEMORY));

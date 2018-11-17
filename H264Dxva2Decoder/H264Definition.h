@@ -4,101 +4,13 @@
 #ifndef H264DEFINITION_H
 #define H264DEFINITION_H
 
-#define ATOM_MIN_SIZE_HEADER		8
-#define ATOM_MIN_READ_SIZE_HEADER	16
-
-#define ATOM_TYPE_FTYP  0x66747970
-#define ATOM_TYPE_FREE  0x66726565
-#define ATOM_TYPE_MOOV  0x6D6F6F76
-#define ATOM_TYPE_MDAT  0x6d646174
-#define ATOM_TYPE_WIDE  0x77696465
-#define ATOM_TYPE_UUID  0x75756964
-
-#define ATOM_TYPE_MVHD  0x6d766864
-#define ATOM_TYPE_TRAK  0x7472616B
-#define ATOM_TYPE_UDTA  0x75647461
-#define ATOM_TYPE_IODS  0x696f6473
-
-#define ATOM_TYPE_TKHD  0x746b6864
-#define ATOM_TYPE_EDTS  0x65647473
-#define ATOM_TYPE_ELST  0x656c7374
-#define ATOM_TYPE_MDIA  0x6d646961
-#define ATOM_TYPE_TREF  0x74726566
-
-#define ATOM_TYPE_MDHD  0x6d646864
-#define ATOM_TYPE_HDLR  0x68646c72
-#define ATOM_TYPE_MINF  0x6d696e66
-#define ATOM_TYPE_STBL  0x7374626c
-#define ATOM_TYPE_VMHD  0x766d6864
-#define ATOM_TYPE_SMHD  0x736d6864
-#define ATOM_TYPE_GMHD  0x676d6864
-#define ATOM_TYPE_DINF  0x64696e66
-#define ATOM_TYPE_NMHD  0x6e6d6864
-#define ATOM_TYPE_HMHD  0x686d6864
-
-#define ATOM_TYPE_STSD  0x73747364
-#define ATOM_TYPE_STTS  0x73747473
-#define ATOM_TYPE_CTTS  0x63747473
-#define ATOM_TYPE_STSS  0x73747373
-#define ATOM_TYPE_STSC  0x73747363
-#define ATOM_TYPE_STSZ  0x7374737a
-#define ATOM_TYPE_STCO  0x7374636f
-#define ATOM_TYPE_CO64  0x636f3634
-#define ATOM_TYPE_SDTP  0x73647470
-#define ATOM_TYPE_SBGP  0x73626770
-#define ATOM_TYPE_SGPD  0x73677064
-
-#define HANDLER_TYPE_VIDEO  0x76696465
-#define HANDLER_TYPE_SOUND  0x736F756E
-#define HANDLER_TYPE_TEXT   0x74657874
-#define HANDLER_TYPE_ODSM   0x6f64736d
-#define HANDLER_TYPE_SDSM   0x7364736d
-#define HANDLER_TYPE_HINT   0x68696e74
-
-#define ATOM_TYPE_AVC1  0x61766331
-#define ATOM_TYPE_MP4V  0x6d703476
-#define ATOM_TYPE_MP4A  0x6d703461
-#define ATOM_TYPE_TEXT  0x74657874
-#define ATOM_TYPE_MP4S  0x6d703473
-#define ATOM_TYPE_AC_3  0x61632d33
-#define ATOM_TYPE_RTP_  0x72747020
-
-#define ATOM_TYPE_AVCC  0x61766343
-
-#define ATOM_TYPE_PASP  0x70617370
-#define ATOM_TYPE_ESDS  0x65736473
-
 #define MAX_SPS_COUNT      32
 #define MAX_PPS_COUNT      256
 #define MAX_SLICEGROUP_IDS 8
 #define MAX_REF_PIC_COUNT  16
 
-#define MPG4_ES_DESCRIPTOR					0x03
-#define MPG4_DECODER_CONFIG_DESCRIPTOR		0X04
-#define MPG4_DECODER_SPECIFIC_DESCRIPTOR	0X05
-
 // This is for mpeg2, check for h264
 #define MAX_SLICE	175 // (1 to 175 : 0x00000001 to 0x000001AF)
-
-inline DWORD MAKE_DWORD_HOSTORDER(const BYTE* pData){
-
-	return ((DWORD*)pData)[0];
-}
-
-inline UINT64 MAKE_DWORD_HOSTORDER64(const BYTE* pData){
-
-	return ((UINT64*)pData)[0];
-}
-
-inline DWORD MAKE_DWORD(const BYTE* pData){
-
-	return _byteswap_ulong(MAKE_DWORD_HOSTORDER(pData));
-}
-
-inline UINT64 MAKE_DWORD64(const BYTE* pData){
-
-	return _byteswap_uint64(MAKE_DWORD_HOSTORDER64(pData));
-}
 
 enum NAL_UNIT_TYPE{
 
@@ -350,6 +262,9 @@ struct SPS_DATA{
 	DWORD MaxPicOrderCntLsb;
 	// pic_order_cnt_type == 2
 	DWORD MaxFrameNum;
+	BOOL bHasCustomScalingList;
+	UCHAR ScalingList4x4[6][16];
+	UCHAR ScalingList8x8[6][64];
 };
 
 struct PPS_DATA{
@@ -456,9 +371,44 @@ struct PICTURE_INFO{
 	BYTE btNalRefIdc;
 };
 
-struct PICTURE_REFERENCE_INFO{
+const UCHAR Default_4x4_Intra[16] = {
 
-	INT TopFieldOrderCnt;
+	6, 13, 13, 20,
+	20, 20, 28, 28,
+	28, 28, 32, 32,
+	32, 37, 37, 42
+};
+
+const UCHAR Default_4x4_Inter[16] = {
+
+	10, 14, 14, 20,
+	20, 20, 24, 24,
+	24, 24, 27, 27,
+	27, 30, 30, 34
+};
+
+const UCHAR Default_8x8_Intra[64] = {
+
+	6, 10, 10, 13, 11, 13, 16, 16,
+	16, 16, 18, 18, 18, 18, 18, 23,
+	23, 23, 23, 23, 23, 25, 25, 25,
+	25, 25, 25, 25, 27, 27, 27, 27,
+	27, 27, 27, 27, 29, 29, 29, 29,
+	29, 29, 29, 31, 31, 31, 31, 31,
+	31, 33, 33, 33, 33, 33, 36, 36,
+	36, 36, 38, 38, 38, 40, 40, 42
+};
+
+const UCHAR Default_8x8_Inter[64] = {
+
+	9, 13, 13, 15, 13, 15, 17, 17,
+	17, 17, 19, 19, 19, 19, 19, 21,
+	21, 21, 21, 21, 21, 22, 22, 22,
+	22, 22, 22, 22, 24, 24, 24, 24,
+	24, 24, 24, 24, 25, 25, 25, 25,
+	25, 25, 25, 27, 27, 27, 27, 27,
+	27, 28, 28, 28, 28, 28, 30, 30,
+	30, 30, 32, 32, 32, 33, 33, 35
 };
 
 #endif

@@ -30,21 +30,18 @@ HRESULT CH264NaluParser::ParseVideoConfigDescriptor(const BYTE* pData, const DWO
 	else{
 
 		// todo : size 1
-		assert(FALSE);
-		return E_FAIL;
+		IF_FAILED_RETURN(hr = E_FAIL);
 	}
 
 	pData += m_iNaluLenghtSize;
 	dwLeft -= m_iNaluLenghtSize;
-
-	hr = E_FAIL;
 
 	// uiForbiddenZeroBit
 	BYTE uiForbiddenZeroBit = *pData >> 7;
 
 	if(uiForbiddenZeroBit != 0){
 		TRACE((L"ParseNalHeader : uiForbiddenZeroBit != 0"));
-		return hr;
+		IF_FAILED_RETURN(hr = E_FAIL);
 	}
 
 	// uiNalRefIdc
@@ -76,21 +73,18 @@ HRESULT CH264NaluParser::ParseVideoConfigDescriptor(const BYTE* pData, const DWO
 	else{
 
 		// todo : size 1
-		assert(FALSE);
-		return E_FAIL;
+		IF_FAILED_RETURN(hr = E_FAIL);
 	}
 
 	pData += m_iNaluLenghtSize;
 	dwLeft -= m_iNaluLenghtSize;
-
-	hr = E_FAIL;
 
 	// uiForbiddenZeroBit
 	uiForbiddenZeroBit = *pData >> 7;
 
 	if(uiForbiddenZeroBit != 0){
 		TRACE((L"ParseNalHeader : uiForbiddenZeroBit != 0"));
-		return hr;
+		IF_FAILED_RETURN(hr = E_FAIL);
 	}
 
 	// uiNalRefIdc
@@ -112,12 +106,13 @@ HRESULT CH264NaluParser::ParseVideoConfigDescriptor(const BYTE* pData, const DWO
 
 HRESULT CH264NaluParser::ParseNaluHeader(CMFBuffer& pVideoBuffer){
 
-	HRESULT hr = S_FALSE;
+	HRESULT hr;
 	DWORD dwNaluSize = 0;
 	DWORD dwSize = pVideoBuffer.GetBufferSize();
 
 	if(dwSize <= 4){
 		TRACE((L"ParseNalHeader : buffer size <= 4"));
+		IF_FAILED_RETURN(hr = pVideoBuffer.SetStartPosition(dwSize));
 		return hr;
 	}
 
@@ -133,11 +128,10 @@ HRESULT CH264NaluParser::ParseNaluHeader(CMFBuffer& pVideoBuffer){
 	else{
 
 		// todo : size 1
-		assert(FALSE);
-		return E_FAIL;
+		IF_FAILED_RETURN(hr = E_FAIL);
 	}
 
-	assert(dwNaluSize <= pVideoBuffer.GetBufferSize());
+	IF_FAILED_RETURN(hr = (dwNaluSize == 0 || dwNaluSize <= pVideoBuffer.GetBufferSize()));
 
 	IF_FAILED_RETURN(hr = pVideoBuffer.SetStartPosition(m_iNaluLenghtSize));
 
@@ -146,13 +140,12 @@ HRESULT CH264NaluParser::ParseNaluHeader(CMFBuffer& pVideoBuffer){
 
 	BYTE* pData = pVideoBuffer.GetStartBuffer();
 
-	hr = E_FAIL;
-
 	// uiForbiddenZeroBit
 	BYTE uiForbiddenZeroBit = *pData >> 7;
 
 	if(uiForbiddenZeroBit != 0){
 		TRACE((L"ParseNalHeader : uiForbiddenZeroBit != 0"));
+		IF_FAILED_RETURN(hr = pVideoBuffer.SetStartPosition(dwNaluSize));
 		return hr;
 	}
 
@@ -230,8 +223,8 @@ HRESULT CH264NaluParser::ParseSPS(){
 
 		if(pSPS->seq_scaling_matrix_present_flag){
 
-			// todo
-			IF_FAILED_RETURN(hr = E_FAIL);
+			ScalingListAll(pSPS);
+			pSPS->bHasCustomScalingList = TRUE;
 		}
 	}
 	else{
@@ -386,18 +379,8 @@ HRESULT CH264NaluParser::ParsePPS(){
 
 	if(pPPS->pic_scaling_matrix_present_flag){
 
+		// todo : pic_scaling_matrix_present_flag
 		IF_FAILED_RETURN(hr = E_FAIL);
-
-		/*uint max_count = 6 + (2 * transform_8x8_mode_flag);
-
-		for(uint ix = 0; ix < max_count; ix++){
-
-			temp = m_cBitStream.GetBits(1);
-
-			if(temp){
-				scaling_list(ix, ix < 6 ? 16 : 64, bs);
-		}
-		*/
 	}
 
 	pPPS->second_chroma_qp_index_offset = m_cBitStream.SGolomb();
@@ -409,7 +392,7 @@ HRESULT CH264NaluParser::ParsePPS(){
 
 HRESULT CH264NaluParser::ParseCodedSlice(){
 
-	HRESULT hr = S_OK;
+	HRESULT hr;
 
 	ZeroMemory(m_Picture.slice.vReorderedList, sizeof(m_Picture.slice.vReorderedList));
 	ZeroMemory(&m_Picture.slice.PicMarking, sizeof(m_Picture.slice.PicMarking));
@@ -880,4 +863,56 @@ void CH264NaluParser::hrd_parameters(){
 	/*DWORD cpb_removal_delay_length_minus1 =*/ m_cBitStream.GetBits(5);
 	/*DWORD dpb_output_delay_length_minus1 =*/ m_cBitStream.GetBits(5);
 	/*DWORD time_offset_length =*/ m_cBitStream.GetBits(5);
+}
+
+void CH264NaluParser::ScalingListAll(SPS_DATA* pSPS){
+
+	ScalingList(16, pSPS->ScalingList4x4[0], Default_4x4_Intra, Default_4x4_Intra);
+	ScalingList(16, pSPS->ScalingList4x4[1], Default_4x4_Intra, pSPS->ScalingList4x4[0]);
+	ScalingList(16, pSPS->ScalingList4x4[2], Default_4x4_Intra, pSPS->ScalingList4x4[1]);
+	ScalingList(16, pSPS->ScalingList4x4[3], Default_4x4_Inter, Default_4x4_Inter);
+	ScalingList(16, pSPS->ScalingList4x4[4], Default_4x4_Inter, pSPS->ScalingList4x4[3]);
+	ScalingList(16, pSPS->ScalingList4x4[5], Default_4x4_Inter, pSPS->ScalingList4x4[4]);
+
+	ScalingList(64, pSPS->ScalingList8x8[0], Default_8x8_Intra, Default_8x8_Intra);
+	ScalingList(64, pSPS->ScalingList8x8[1], Default_8x8_Inter, Default_8x8_Inter);
+
+	if(pSPS->chroma_format_idc == 3){
+
+		ScalingList(64, pSPS->ScalingList8x8[2], Default_8x8_Intra, pSPS->ScalingList8x8[0]);
+		ScalingList(64, pSPS->ScalingList8x8[3], Default_8x8_Inter, pSPS->ScalingList8x8[1]);
+		ScalingList(64, pSPS->ScalingList8x8[4], Default_8x8_Intra, pSPS->ScalingList8x8[2]);
+		ScalingList(64, pSPS->ScalingList8x8[5], Default_8x8_Inter, pSPS->ScalingList8x8[3]);
+	}
+}
+
+void CH264NaluParser::ScalingList(const int iSizeOfScalingList, UCHAR* pScalingList, const UCHAR* pDefaultList, const UCHAR* pFallbackList){
+
+	if(m_cBitStream.GetBits(1) == 0){
+
+		memcpy(pScalingList, pFallbackList, iSizeOfScalingList);
+		return;
+	}
+
+	int lastScale = 8;
+	int nextScale = 8;
+	int delta_scale;
+
+	for(int i = 0; i < iSizeOfScalingList; i++){
+
+		if(nextScale != 0){
+
+			delta_scale = m_cBitStream.SGolomb();
+			nextScale = (lastScale + delta_scale + 256) % 256;
+
+			if(i == 0 && nextScale == 0){
+
+				memcpy(pScalingList, pDefaultList, iSizeOfScalingList);
+				return;
+			}
+		}
+
+		pScalingList[i] = (UCHAR)((nextScale == 0) ? lastScale : nextScale);
+		lastScale = pScalingList[i];
+	}
 }

@@ -69,7 +69,7 @@ HRESULT ProcessDecode(){
 
 		DXVA2_Frequency Dxva2Freq;
 		IF_FAILED_THROW(hr = pH264AtomParser->GetVideoFrameRate(dwTrackId, &Dxva2Freq.Numerator, &Dxva2Freq.Denominator));
-		IF_FAILED_THROW(hr = pDxva2Decoder->InitDXVA2(cH264NaluParser.GetWidth(), cH264NaluParser.GetHeight(), Dxva2Freq.Numerator, Dxva2Freq.Denominator));
+		IF_FAILED_THROW(hr = pDxva2Decoder->InitDXVA2(cH264NaluParser.GetSPS(), cH264NaluParser.GetWidth(), cH264NaluParser.GetHeight(), Dxva2Freq.Numerator, Dxva2Freq.Denominator));
 
 		IF_FAILED_THROW(hr = pVideoBuffer.Initialize(H264_BUFFER_SIZE));
 		IF_FAILED_THROW(hr = pNalUnitBuffer.Initialize(H264_BUFFER_SIZE));

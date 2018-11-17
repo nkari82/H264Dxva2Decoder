@@ -63,6 +63,9 @@
     <ClInclude Include="Common\MFTrace.h">
       <Filter>Common</Filter>
     </ClInclude>
+    <ClInclude Include="Mp4Definition.h">
+      <Filter>Fichiers d%27en-tête</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="BitStream.cpp">

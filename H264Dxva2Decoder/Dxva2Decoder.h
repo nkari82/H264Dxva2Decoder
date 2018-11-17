@@ -16,7 +16,7 @@ public:
 	CDxva2Decoder();
 	~CDxva2Decoder(){ OnRelease(); }
 
-	HRESULT InitDXVA2(const UINT, const UINT, const UINT, const UINT);
+	HRESULT InitDXVA2(const SPS_DATA&, const UINT, const UINT, const UINT, const UINT);
 	void OnRelease();
 	HRESULT DecodeFrame(CMFBuffer&, const PICTURE_INFO&);
 	HRESULT DisplayFrame();
@@ -71,17 +71,15 @@ private:
 	};
 
 	deque<POC> m_dqPoc;
-	deque<PICTURE_REFERENCE_INFO> m_dqShortRef;
-	deque<PICTURE_REFERENCE_INFO> m_dqLongRef;
 	deque<PICTURE_PRESENTATION> m_dqPicturePresentation;
 	INT m_iPrevTopFieldOrderCount;
 
 	HRESULT InitForm(const UINT, const UINT);
 	HRESULT InitDecoderService();
-	HRESULT InitVideoDecoder();
-	void InitDxva2Struct();
+	HRESULT InitVideoDecoder(const SPS_DATA&);
+	void InitDxva2Struct(const SPS_DATA&);
 	void InitPictureParams(const DWORD, const PICTURE_INFO&);
-	void InitQuantaMatrixParams(const PPS_DATA&);
+	void InitQuantaMatrixParams(const SPS_DATA&);
 	HRESULT AddNalUnitBufferPadding(CMFBuffer&, const UINT);
 	void HandlePOC(const DWORD, const PICTURE_INFO&);
 

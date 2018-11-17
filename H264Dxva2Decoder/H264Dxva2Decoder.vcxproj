@@ -33,6 +33,7 @@
     <ClInclude Include="H264Definition.h" />
     <ClInclude Include="H264NaluParser.h" />
     <ClInclude Include="MFByteStream.h" />
+    <ClInclude Include="Mp4Definition.h" />
     <ClInclude Include="StdAfx.h" />
   </ItemGroup>
   <ItemGroup>

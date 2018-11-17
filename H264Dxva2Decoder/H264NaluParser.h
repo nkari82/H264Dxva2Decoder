@@ -15,6 +15,7 @@ public:
 	HRESULT ParseNaluHeader(CMFBuffer&);
 
 	const BOOL IsNalUnitCodedSlice() const{ return (m_Picture.NalUnitType == NAL_UNIT_CODED_SLICE || m_Picture.NalUnitType == NAL_UNIT_CODED_SLICE_IDR); }
+	const SPS_DATA& GetSPS() const { return m_Picture.sps; }
 	const PICTURE_INFO& GetPicture() const { return m_Picture; }
 	const DWORD GetWidth() const{ return m_dwWidth; }
 	const DWORD GetHeight() const{ return m_dwHeight; }
@@ -36,6 +37,8 @@ private:
 	HRESULT ParsePredWeightTable();
 	HRESULT ParseDecRefPicMarking();
 	void hrd_parameters();
+	void ScalingListAll(SPS_DATA*);
+	void ScalingList(const int, UCHAR*, const UCHAR*, const UCHAR*);
 };
 
 #endif

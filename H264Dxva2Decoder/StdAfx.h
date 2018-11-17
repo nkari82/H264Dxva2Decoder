@@ -76,6 +76,7 @@ const DWORD H264_BUFFER_SIZE = 262144;
 
 //----------------------------------------------------------------------------------------------
 // Project Files
+#include "Mp4Definition.h"
 #include "H264Definition.h"
 #include "BitStream.h"
 #include "MFByteStream.h"
