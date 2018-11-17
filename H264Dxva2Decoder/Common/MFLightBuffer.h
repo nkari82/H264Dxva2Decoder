@@ -21,7 +21,7 @@ public:
 
 private:
 
-	BYTE * m_pBuffer;
+	BYTE* m_pBuffer;
 	DWORD m_dwSize;
 };
 

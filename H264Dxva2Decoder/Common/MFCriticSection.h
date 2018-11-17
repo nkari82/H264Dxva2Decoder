@@ -23,7 +23,7 @@ class AutoLock{
 
 private:
 
-	CriticSection * m_pSection;
+	CriticSection* m_pSection;
 
 public:
 
