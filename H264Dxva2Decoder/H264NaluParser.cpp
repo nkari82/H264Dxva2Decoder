@@ -131,7 +131,7 @@ HRESULT CH264NaluParser::ParseNaluHeader(CMFBuffer& pVideoBuffer){
 		IF_FAILED_RETURN(hr = E_FAIL);
 	}
 
-	IF_FAILED_RETURN(hr = (dwNaluSize == 0 || dwNaluSize <= pVideoBuffer.GetBufferSize()));
+	IF_FAILED_RETURN(hr = (dwNaluSize != 0 && dwNaluSize <= pVideoBuffer.GetBufferSize() ? S_OK : E_FAIL));
 
 	IF_FAILED_RETURN(hr = pVideoBuffer.SetStartPosition(m_iNaluLenghtSize));
 
