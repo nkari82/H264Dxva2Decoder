@@ -37,20 +37,19 @@ template<class T> inline void SAFE_DELETE_ARRAY(T*& p){
 }
 #endif
 
-// Need to use other macro. When error, multiple call.
 #ifndef IF_FAILED_RETURN
 #if(_DEBUG && MF_USE_LOGGING)
-#define IF_FAILED_RETURN(hr) if(FAILED(hr)){ LOG_HRESULT(hr); return hr; }
+#define IF_FAILED_RETURN(X) if(FAILED(hr = (X))){ LOG_HRESULT(hr); return hr; }
 #else
-#define IF_FAILED_RETURN(hr) if(FAILED(hr)){ return hr; }
+#define IF_FAILED_RETURN(X) if(FAILED(hr = (X))){ return hr; }
 #endif
 #endif
 
 #ifndef IF_FAILED_THROW
 #if(_DEBUG && MF_USE_LOGGING)
-#define IF_FAILED_THROW(hr) if(FAILED(hr)){ LOG_HRESULT(hr); throw hr; }
+#define IF_FAILED_THROW(X) if(FAILED(hr = (X))){ LOG_HRESULT(hr); throw hr; }
 #else
-#define IF_FAILED_THROW(hr) if(FAILED(hr)){ throw hr; }
+#define IF_FAILED_THROW(X) if(FAILED(hr = (X))){ throw hr; }
 #endif
 #endif
 
