@@ -16,7 +16,7 @@ HRESULT CH264NaluParser::ParseVideoConfigDescriptor(const BYTE* pData, const DWO
 	DWORD dwNaluSize = 0;
 	DWORD dwLeft = dwSize;
 
-	IF_FAILED_RETURN(hr = (dwSize > 8 && pData != NULL ? S_OK : E_FAIL));
+	IF_FAILED_RETURN(dwSize > 8 && pData != NULL ? S_OK : E_FAIL);
 
 	if(m_iNaluLenghtSize == 4){
 
@@ -30,7 +30,7 @@ HRESULT CH264NaluParser::ParseVideoConfigDescriptor(const BYTE* pData, const DWO
 	else{
 
 		// todo : size 1
-		IF_FAILED_RETURN(hr = E_FAIL);
+		IF_FAILED_RETURN(E_FAIL);
 	}
 
 	pData += m_iNaluLenghtSize;
@@ -41,7 +41,7 @@ HRESULT CH264NaluParser::ParseVideoConfigDescriptor(const BYTE* pData, const DWO
 
 	if(uiForbiddenZeroBit != 0){
 		TRACE((L"ParseNalHeader : uiForbiddenZeroBit != 0"));
-		IF_FAILED_RETURN(hr = E_FAIL);
+		IF_FAILED_RETURN(E_FAIL);
 	}
 
 	// uiNalRefIdc
@@ -49,14 +49,14 @@ HRESULT CH264NaluParser::ParseVideoConfigDescriptor(const BYTE* pData, const DWO
 	// eNalUnitType
 	m_Picture.NalUnitType = (NAL_UNIT_TYPE)(*pData & 0x1f);
 
-	IF_FAILED_RETURN(hr = (m_Picture.NalUnitType != NAL_UNIT_SPS ? E_FAIL : S_OK));
+	IF_FAILED_RETURN(m_Picture.NalUnitType != NAL_UNIT_SPS ? E_FAIL : S_OK);
 
 	pData++;
 	dwLeft--;
 
 	m_cBitStream.Init(pData, dwLeft * 8);
 
-	IF_FAILED_RETURN(hr = ParseSPS());
+	IF_FAILED_RETURN(ParseSPS());
 
 	pData += (dwNaluSize - 1);
 	dwLeft -= (dwNaluSize - 1);
@@ -73,7 +73,7 @@ HRESULT CH264NaluParser::ParseVideoConfigDescriptor(const BYTE* pData, const DWO
 	else{
 
 		// todo : size 1
-		IF_FAILED_RETURN(hr = E_FAIL);
+		IF_FAILED_RETURN(E_FAIL);
 	}
 
 	pData += m_iNaluLenghtSize;
@@ -84,7 +84,7 @@ HRESULT CH264NaluParser::ParseVideoConfigDescriptor(const BYTE* pData, const DWO
 
 	if(uiForbiddenZeroBit != 0){
 		TRACE((L"ParseNalHeader : uiForbiddenZeroBit != 0"));
-		IF_FAILED_RETURN(hr = E_FAIL);
+		IF_FAILED_RETURN(E_FAIL);
 	}
 
 	// uiNalRefIdc
@@ -92,28 +92,29 @@ HRESULT CH264NaluParser::ParseVideoConfigDescriptor(const BYTE* pData, const DWO
 	// eNalUnitType
 	m_Picture.NalUnitType = (NAL_UNIT_TYPE)(*pData & 0x1f);
 
-	IF_FAILED_RETURN(hr = (m_Picture.NalUnitType != NAL_UNIT_PPS ? E_FAIL : S_OK));
+	IF_FAILED_RETURN(m_Picture.NalUnitType != NAL_UNIT_PPS ? E_FAIL : S_OK);
 
 	pData++;
 	dwLeft--;
 
 	m_cBitStream.Init(pData, dwLeft * 8);
 
-	IF_FAILED_RETURN(hr = ParsePPS());
+	IF_FAILED_RETURN(ParsePPS());
 
 	return hr;
 }
 
 HRESULT CH264NaluParser::ParseNaluHeader(CMFBuffer& pVideoBuffer){
 
-	HRESULT hr;
+	HRESULT hr = S_OK;
 	DWORD dwNaluSize = 0;
 	DWORD dwSize = pVideoBuffer.GetBufferSize();
+	m_Picture.NalUnitType = NAL_UNIT_UNSPEC_0;
 
 	if(dwSize <= 4){
 		TRACE((L"ParseNalHeader : buffer size <= 4"));
-		IF_FAILED_RETURN(hr = pVideoBuffer.SetStartPosition(dwSize));
-		return hr;
+		pVideoBuffer.Reset();
+		return S_FALSE;
 	}
 
 	if(m_iNaluLenghtSize == 4){
@@ -128,12 +129,17 @@ HRESULT CH264NaluParser::ParseNaluHeader(CMFBuffer& pVideoBuffer){
 	else{
 
 		// todo : size 1
-		IF_FAILED_RETURN(hr = E_FAIL);
+		IF_FAILED_RETURN(E_FAIL);
 	}
 
-	IF_FAILED_RETURN(hr = (dwNaluSize != 0 && dwNaluSize <= pVideoBuffer.GetBufferSize() ? S_OK : E_FAIL));
+	if(dwNaluSize == 0 || dwNaluSize > pVideoBuffer.GetBufferSize()){
 
-	IF_FAILED_RETURN(hr = pVideoBuffer.SetStartPosition(m_iNaluLenghtSize));
+		TRACE((L"ParseNalHeader : Nalu size = %u", dwNaluSize));
+		pVideoBuffer.Reset();
+		return S_FALSE;
+	}
+
+	IF_FAILED_RETURN(pVideoBuffer.SetStartPosition(m_iNaluLenghtSize));
 
 	// Todo : remove the consecutive ZERO at the end of current NAL in the reverse order.--2011.6.1
 	// RemoveEmulationPreventionByte : no problem for now
@@ -145,8 +151,8 @@ HRESULT CH264NaluParser::ParseNaluHeader(CMFBuffer& pVideoBuffer){
 
 	if(uiForbiddenZeroBit != 0){
 		TRACE((L"ParseNalHeader : uiForbiddenZeroBit != 0"));
-		IF_FAILED_RETURN(hr = pVideoBuffer.SetStartPosition(dwNaluSize));
-		return hr;
+		IF_FAILED_RETURN(pVideoBuffer.SetStartPosition(dwNaluSize));
+		return S_FALSE;
 	}
 
 	// uiNalRefIdc
@@ -194,7 +200,7 @@ HRESULT CH264NaluParser::ParseSPS(){
 
 	if(pSPS->seq_parameter_set_id >= MAX_SPS_COUNT){
 
-		IF_FAILED_RETURN(hr = E_FAIL);
+		IF_FAILED_RETURN(E_FAIL);
 	}
 
 	// Todo : not sure for all of these values
@@ -242,13 +248,13 @@ HRESULT CH264NaluParser::ParseSPS(){
 
 		pSPS->log2_max_pic_order_cnt_lsb_minus4 = m_cBitStream.UGolomb();
 
-		IF_FAILED_RETURN(hr = (pSPS->log2_max_pic_order_cnt_lsb_minus4 > 12) ? E_FAIL : S_OK);
+		IF_FAILED_RETURN(pSPS->log2_max_pic_order_cnt_lsb_minus4 > 12 ? E_FAIL : S_OK);
 		pSPS->MaxPicOrderCntLsb = 1 << (pSPS->log2_max_pic_order_cnt_lsb_minus4 + 4);
 	}
 	else if(pSPS->pic_order_cnt_type == 1){
 
 		// Todo : get delta_pic_order_always_zero_flag/etc...
-		IF_FAILED_RETURN(hr = E_FAIL);
+		IF_FAILED_RETURN(E_FAIL);
 	}
 	else if(pSPS->pic_order_cnt_type == 2){
 
@@ -256,7 +262,7 @@ HRESULT CH264NaluParser::ParseSPS(){
 	}
 	else{
 
-		IF_FAILED_RETURN(hr = E_FAIL);
+		IF_FAILED_RETURN(E_FAIL);
 	}
 
 	pSPS->num_ref_frames = m_cBitStream.UGolomb();
@@ -268,7 +274,7 @@ HRESULT CH264NaluParser::ParseSPS(){
 	if(!pSPS->frame_mbs_only_flag){
 
 		// Todo : mb_adaptive_frame_field_flag
-		IF_FAILED_RETURN(hr = E_FAIL);
+		IF_FAILED_RETURN(E_FAIL);
 	}
 
 	pSPS->direct_8x8_inference_flag = m_cBitStream.GetBits(1) ? TRUE : FALSE;
@@ -292,7 +298,7 @@ HRESULT CH264NaluParser::ParseSPS(){
 	pSPS->vui_parameters_present_flag = m_cBitStream.GetBits(1) ? TRUE : FALSE;
 
 	if(pSPS->vui_parameters_present_flag)
-		IF_FAILED_RETURN(hr = ParseVuiParameters(pSPS));
+		IF_FAILED_RETURN(ParseVuiParameters(pSPS));
 
 	// rbsp_trailing_bits();
 
@@ -308,13 +314,13 @@ HRESULT CH264NaluParser::ParsePPS(){
 	pPPS->pic_parameter_set_id = m_cBitStream.UGolomb();
 
 	if(pPPS->pic_parameter_set_id >= MAX_PPS_COUNT){
-		IF_FAILED_RETURN(hr = E_FAIL);
+		IF_FAILED_RETURN(E_FAIL);
 	}
 
 	pPPS->seq_parameter_set_id = m_cBitStream.UGolomb();
 
 	if(pPPS->seq_parameter_set_id >= MAX_SPS_COUNT){
-		IF_FAILED_RETURN(hr = E_FAIL);
+		IF_FAILED_RETURN(E_FAIL);
 	}
 
 	pPPS->entropy_coding_mode_flag = m_cBitStream.GetBits(1) ? TRUE : FALSE;
@@ -322,26 +328,26 @@ HRESULT CH264NaluParser::ParsePPS(){
 
 	/*if(pPPS->pic_order_present_flag != FALSE){
 		// todo
-		IF_FAILED_RETURN(hr = E_FAIL);
+		IF_FAILED_RETURN(E_FAIL);
 	}*/
 
 	pPPS->num_slice_groups_minus1 = m_cBitStream.UGolomb();
 
 	if((pPPS->num_slice_groups_minus1 + 1) > MAX_SLICEGROUP_IDS){
-		IF_FAILED_RETURN(hr = E_FAIL);
+		IF_FAILED_RETURN(E_FAIL);
 	}
 
 	if(pPPS->num_slice_groups_minus1 > 0){
 
 		// Todo : slice_group_map_type/etc...
-		IF_FAILED_RETURN(hr = E_FAIL);
+		IF_FAILED_RETURN(E_FAIL);
 	}
 
 	pPPS->num_ref_idx_l0_active_minus1 = m_cBitStream.UGolomb();
 	pPPS->num_ref_idx_l1_active_minus1 = m_cBitStream.UGolomb();
 
 	if(pPPS->num_ref_idx_l0_active_minus1 > MAX_REF_PIC_COUNT || pPPS->num_ref_idx_l1_active_minus1 > MAX_REF_PIC_COUNT){
-		IF_FAILED_RETURN(hr = E_FAIL);
+		IF_FAILED_RETURN(E_FAIL);
 	}
 
 	pPPS->weighted_pred_flag = m_cBitStream.GetBits(1) ? TRUE : FALSE;
@@ -356,7 +362,7 @@ HRESULT CH264NaluParser::ParsePPS(){
 
 	if(pPPS->redundant_pic_cnt_present_flag != FALSE){
 		// todo
-		IF_FAILED_RETURN(hr = E_FAIL);
+		IF_FAILED_RETURN(E_FAIL);
 	}
 
 	int bits = m_cBitStream.BitsRemain();
@@ -380,7 +386,7 @@ HRESULT CH264NaluParser::ParsePPS(){
 	if(pPPS->pic_scaling_matrix_present_flag){
 
 		// todo : pic_scaling_matrix_present_flag
-		IF_FAILED_RETURN(hr = E_FAIL);
+		IF_FAILED_RETURN(E_FAIL);
 	}
 
 	pPPS->second_chroma_qp_index_offset = m_cBitStream.SGolomb();
@@ -400,7 +406,7 @@ HRESULT CH264NaluParser::ParseCodedSlice(){
 	m_Picture.slice.first_mb_in_slice = (USHORT)m_cBitStream.UGolomb();
 
 	// todo : handle multiple NALU in one slice frame
-	IF_FAILED_RETURN(hr = (m_Picture.slice.first_mb_in_slice ? E_FAIL : S_OK));
+	IF_FAILED_RETURN(m_Picture.slice.first_mb_in_slice ? E_FAIL : S_OK);
 
 	m_Picture.slice.slice_type = (USHORT)m_cBitStream.UGolomb();
 	m_Picture.slice.pic_parameter_set_id = (USHORT)m_cBitStream.UGolomb();
@@ -486,7 +492,7 @@ HRESULT CH264NaluParser::ParseCodedSlice(){
 				else if(m_Picture.slice.vReorderedList[0][iIndex].reordering_of_pic_nums_idc == 2)
 					m_Picture.slice.vReorderedList[0][iIndex].long_term_pic_num = (USHORT)m_cBitStream.UGolomb();
 				else if(m_Picture.slice.vReorderedList[0][iIndex].reordering_of_pic_nums_idc != 3)
-					IF_FAILED_RETURN(hr = E_FAIL);
+					IF_FAILED_RETURN(E_FAIL);
 			}
 			while(m_Picture.slice.vReorderedList[0][iIndex].reordering_of_pic_nums_idc != 3);
 		}
@@ -512,7 +518,7 @@ HRESULT CH264NaluParser::ParseCodedSlice(){
 				else if(m_Picture.slice.vReorderedList[1][iIndex].reordering_of_pic_nums_idc == 2)
 					m_Picture.slice.vReorderedList[1][iIndex].long_term_pic_num = (USHORT)m_cBitStream.UGolomb();
 				else if(m_Picture.slice.vReorderedList[1][iIndex].reordering_of_pic_nums_idc != 3)
-					IF_FAILED_RETURN(hr = E_FAIL);
+					IF_FAILED_RETURN(E_FAIL);
 			}
 			while(m_Picture.slice.vReorderedList[1][iIndex].reordering_of_pic_nums_idc != 3);
 		}

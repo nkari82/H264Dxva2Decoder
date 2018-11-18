@@ -20,6 +20,7 @@ public:
 	void OnRelease();
 	HRESULT DecodeFrame(CMFBuffer&, const PICTURE_INFO&);
 	HRESULT DisplayFrame();
+	void ClearPresentation(){ m_dqPicturePresentation.clear(); }
 	DWORD PictureToDisplayCount() const{ return m_dqPicturePresentation.size(); }
 
 private:

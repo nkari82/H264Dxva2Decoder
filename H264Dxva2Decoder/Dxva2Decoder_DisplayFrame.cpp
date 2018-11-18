@@ -66,11 +66,11 @@ HRESULT CDxva2Decoder::RenderFrame(){
 		stream_data.InputFrameOrField = dwSurfaceIndex;
 		stream_data.pInputSurface = m_pSurface9[dwSurfaceIndex];
 
-		IF_FAILED_THROW(hr = m_pDevice9Ex->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &pRT));
+		IF_FAILED_THROW(m_pDevice9Ex->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &pRT));
 
-		IF_FAILED_THROW(hr = m_pDXVAVP->VideoProcessBltHD(pRT, dwSurfaceIndex, 1, &stream_data));
+		IF_FAILED_THROW(m_pDXVAVP->VideoProcessBltHD(pRT, dwSurfaceIndex, 1, &stream_data));
 
-		IF_FAILED_THROW(hr = m_pDevice9Ex->Present(NULL, NULL, NULL, NULL));
+		IF_FAILED_THROW(m_pDevice9Ex->Present(NULL, NULL, NULL, NULL));
 	}
 	catch(HRESULT){}
 
@@ -107,17 +107,17 @@ HRESULT CDxva2Decoder::InitVideoProcessor(){
 
 	try{
 
-		IF_FAILED_THROW(hr = DXVAHD_CreateDevice(m_pDevice9Ex, &desc, DXVAHD_DEVICE_USAGE_PLAYBACK_NORMAL, NULL, &pDXVAHD));
+		IF_FAILED_THROW(DXVAHD_CreateDevice(m_pDevice9Ex, &desc, DXVAHD_DEVICE_USAGE_PLAYBACK_NORMAL, NULL, &pDXVAHD));
 
-		IF_FAILED_THROW(hr = pDXVAHD->GetVideoProcessorDeviceCaps(&caps));
+		IF_FAILED_THROW(pDXVAHD->GetVideoProcessorDeviceCaps(&caps));
 
-		IF_FAILED_THROW(hr = (caps.MaxInputStreams < 1 ? E_FAIL : S_OK));
+		IF_FAILED_THROW(caps.MaxInputStreams < 1 ? E_FAIL : S_OK);
 
 		pFormats = new (std::nothrow)D3DFORMAT[caps.OutputFormatCount];
 
-		IF_FAILED_THROW(hr = (pFormats == NULL ? E_OUTOFMEMORY : S_OK));
+		IF_FAILED_THROW(pFormats == NULL ? E_OUTOFMEMORY : S_OK);
 
-		IF_FAILED_THROW(hr = pDXVAHD->GetVideoProcessorOutputFormats(caps.OutputFormatCount, pFormats));
+		IF_FAILED_THROW(pDXVAHD->GetVideoProcessorOutputFormats(caps.OutputFormatCount, pFormats));
 
 		for(uiIndex = 0; uiIndex < caps.OutputFormatCount; uiIndex++){
 
@@ -126,15 +126,15 @@ HRESULT CDxva2Decoder::InitVideoProcessor(){
 			}
 		}
 
-		IF_FAILED_THROW(hr = (uiIndex == caps.OutputFormatCount ? E_FAIL : S_OK));
+		IF_FAILED_THROW(uiIndex == caps.OutputFormatCount ? E_FAIL : S_OK);
 
 		SAFE_DELETE_ARRAY(pFormats);
 
 		pFormats = new (std::nothrow)D3DFORMAT[caps.InputFormatCount];
 
-		IF_FAILED_THROW(hr = (pFormats == NULL ? E_OUTOFMEMORY : S_OK));
+		IF_FAILED_THROW(pFormats == NULL ? E_OUTOFMEMORY : S_OK);
 
-		IF_FAILED_THROW(hr = pDXVAHD->GetVideoProcessorInputFormats(caps.InputFormatCount, pFormats));
+		IF_FAILED_THROW(pDXVAHD->GetVideoProcessorInputFormats(caps.InputFormatCount, pFormats));
 
 		for(uiIndex = 0; uiIndex < caps.InputFormatCount; uiIndex++){
 
@@ -143,19 +143,19 @@ HRESULT CDxva2Decoder::InitVideoProcessor(){
 			}
 		}
 
-		IF_FAILED_THROW(hr = (uiIndex == caps.InputFormatCount ? E_FAIL : S_OK));
+		IF_FAILED_THROW(uiIndex == caps.InputFormatCount ? E_FAIL : S_OK);
 
 		pVPCaps = new (std::nothrow)DXVAHD_VPCAPS[caps.VideoProcessorCount];
 
-		IF_FAILED_THROW(hr = (pVPCaps == NULL ? E_OUTOFMEMORY : S_OK));
+		IF_FAILED_THROW(pVPCaps == NULL ? E_OUTOFMEMORY : S_OK);
 
-		IF_FAILED_THROW(hr = pDXVAHD->GetVideoProcessorCaps(caps.VideoProcessorCount, pVPCaps));
+		IF_FAILED_THROW(pDXVAHD->GetVideoProcessorCaps(caps.VideoProcessorCount, pVPCaps));
 
-		IF_FAILED_THROW(hr = pDXVAHD->CreateVideoProcessor(&pVPCaps[0].VPGuid, &m_pDXVAVP));
+		IF_FAILED_THROW(pDXVAHD->CreateVideoProcessor(&pVPCaps[0].VPGuid, &m_pDXVAVP));
 
-		IF_FAILED_THROW(hr = m_pDevice9Ex->Clear(0, NULL, D3DCLEAR_TARGET, D3DCOLOR_ARGB(255, 0, 0, 0), 1.0f, 0));
+		IF_FAILED_THROW(m_pDevice9Ex->Clear(0, NULL, D3DCLEAR_TARGET, D3DCOLOR_ARGB(255, 0, 0, 0), 1.0f, 0));
 
-		IF_FAILED_THROW(hr = ConfigureVideoProcessor());
+		IF_FAILED_THROW(ConfigureVideoProcessor());
 	}
 	catch(HRESULT){}
 
@@ -183,15 +183,15 @@ HRESULT CDxva2Decoder::ConfigureVideoProcessor(){
 
 	try{
 
-		IF_FAILED_THROW(hr = m_pDXVAVP->SetVideoProcessStreamState(0, DXVAHD_STREAM_STATE_D3DFORMAT, sizeof(m_Dxva2Desc.Format), &m_Dxva2Desc.Format));
-		IF_FAILED_THROW(hr = m_pDXVAVP->SetVideoProcessStreamState(0, DXVAHD_STREAM_STATE_FRAME_FORMAT, sizeof(FrameFormat), &FrameFormat));
-		IF_FAILED_THROW(hr = m_pDXVAVP->SetVideoProcessStreamState(0, DXVAHD_STREAM_STATE_LUMA_KEY, sizeof(Luma), &Luma));
-		IF_FAILED_THROW(hr = m_pDXVAVP->SetVideoProcessStreamState(0, DXVAHD_STREAM_STATE_ALPHA, sizeof(Alpha), &Alpha));
-		IF_FAILED_THROW(hr = m_pDXVAVP->SetVideoProcessStreamState(0, DXVAHD_STREAM_STATE_SOURCE_RECT, sizeof(Src), &Src));
-		IF_FAILED_THROW(hr = m_pDXVAVP->SetVideoProcessStreamState(0, DXVAHD_STREAM_STATE_DESTINATION_RECT, sizeof(Dest), &Dest));
-		IF_FAILED_THROW(hr = m_pDXVAVP->SetVideoProcessStreamState(0, DXVAHD_STREAM_STATE_INPUT_COLOR_SPACE, sizeof(Color), &Color));
-		IF_FAILED_THROW(hr = m_pDXVAVP->SetVideoProcessBltState(DXVAHD_BLT_STATE_OUTPUT_COLOR_SPACE, sizeof(Color), &Color));
-		IF_FAILED_THROW(hr = m_pDXVAVP->SetVideoProcessBltState(DXVAHD_BLT_STATE_TARGET_RECT, sizeof(Tr), &Tr));
+		IF_FAILED_THROW(m_pDXVAVP->SetVideoProcessStreamState(0, DXVAHD_STREAM_STATE_D3DFORMAT, sizeof(m_Dxva2Desc.Format), &m_Dxva2Desc.Format));
+		IF_FAILED_THROW(m_pDXVAVP->SetVideoProcessStreamState(0, DXVAHD_STREAM_STATE_FRAME_FORMAT, sizeof(FrameFormat), &FrameFormat));
+		IF_FAILED_THROW(m_pDXVAVP->SetVideoProcessStreamState(0, DXVAHD_STREAM_STATE_LUMA_KEY, sizeof(Luma), &Luma));
+		IF_FAILED_THROW(m_pDXVAVP->SetVideoProcessStreamState(0, DXVAHD_STREAM_STATE_ALPHA, sizeof(Alpha), &Alpha));
+		IF_FAILED_THROW(m_pDXVAVP->SetVideoProcessStreamState(0, DXVAHD_STREAM_STATE_SOURCE_RECT, sizeof(Src), &Src));
+		IF_FAILED_THROW(m_pDXVAVP->SetVideoProcessStreamState(0, DXVAHD_STREAM_STATE_DESTINATION_RECT, sizeof(Dest), &Dest));
+		IF_FAILED_THROW(m_pDXVAVP->SetVideoProcessStreamState(0, DXVAHD_STREAM_STATE_INPUT_COLOR_SPACE, sizeof(Color), &Color));
+		IF_FAILED_THROW(m_pDXVAVP->SetVideoProcessBltState(DXVAHD_BLT_STATE_OUTPUT_COLOR_SPACE, sizeof(Color), &Color));
+		IF_FAILED_THROW(m_pDXVAVP->SetVideoProcessBltState(DXVAHD_BLT_STATE_TARGET_RECT, sizeof(Tr), &Tr));
 	}
 	catch(HRESULT){}
 

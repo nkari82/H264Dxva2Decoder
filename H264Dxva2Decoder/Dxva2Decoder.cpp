@@ -99,13 +99,13 @@ HRESULT CDxva2Decoder::InitDXVA2(const SPS_DATA& sps, const UINT uiWidth, const 
 
 	assert(m_hInst != NULL);
 
-	IF_FAILED_RETURN(hr = InitForm(uiWidth, uiHeight));
+	IF_FAILED_RETURN(InitForm(uiWidth, uiHeight));
 
 	assert(m_pD3D9Ex == NULL && m_pDevice9Ex == NULL);
 
 	D3DPRESENT_PARAMETERS d3dpp;
 
-	IF_FAILED_RETURN(hr = Direct3DCreate9Ex(D3D_SDK_VERSION, &m_pD3D9Ex));
+	IF_FAILED_RETURN(Direct3DCreate9Ex(D3D_SDK_VERSION, &m_pD3D9Ex));
 
 	ZeroMemory(&d3dpp, sizeof(d3dpp));
 
@@ -118,11 +118,11 @@ HRESULT CDxva2Decoder::InitDXVA2(const SPS_DATA& sps, const UINT uiWidth, const 
 	d3dpp.Windowed = TRUE;
 	d3dpp.Flags = D3DPRESENTFLAG_VIDEO;
 
-	IF_FAILED_RETURN(hr = m_pD3D9Ex->CreateDeviceEx(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, m_hWnd, D3DCREATE_MULTITHREADED | D3DCREATE_HARDWARE_VERTEXPROCESSING, &d3dpp, NULL, &m_pDevice9Ex));
+	IF_FAILED_RETURN(m_pD3D9Ex->CreateDeviceEx(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, m_hWnd, D3DCREATE_MULTITHREADED | D3DCREATE_HARDWARE_VERTEXPROCESSING, &d3dpp, NULL, &m_pDevice9Ex));
 
-	IF_FAILED_RETURN(hr = m_pDevice9Ex->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE));
-	IF_FAILED_RETURN(hr = m_pDevice9Ex->SetRenderState(D3DRS_ZENABLE, FALSE));
-	IF_FAILED_RETURN(hr = m_pDevice9Ex->SetRenderState(D3DRS_LIGHTING, FALSE));
+	IF_FAILED_RETURN(m_pDevice9Ex->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE));
+	IF_FAILED_RETURN(m_pDevice9Ex->SetRenderState(D3DRS_ZENABLE, FALSE));
+	IF_FAILED_RETURN(m_pDevice9Ex->SetRenderState(D3DRS_LIGHTING, FALSE));
 
 	DXVA2_Frequency Dxva2Freq;
 	Dxva2Freq.Numerator = uiNumerator;
@@ -139,19 +139,19 @@ HRESULT CDxva2Decoder::InitDXVA2(const SPS_DATA& sps, const UINT uiWidth, const 
 	m_Dxva2Desc.InputSampleFreq = Dxva2Freq;
 	m_Dxva2Desc.OutputFrameFreq = Dxva2Freq;
 
-	IF_FAILED_RETURN(hr = DXVA2CreateDirect3DDeviceManager9(&m_pResetToken, &m_pDXVAManager));
+	IF_FAILED_RETURN(DXVA2CreateDirect3DDeviceManager9(&m_pResetToken, &m_pDXVAManager));
 
-	IF_FAILED_RETURN(hr = m_pDXVAManager->ResetDevice(m_pDevice9Ex, m_pResetToken));
+	IF_FAILED_RETURN(m_pDXVAManager->ResetDevice(m_pDevice9Ex, m_pResetToken));
 
-	IF_FAILED_RETURN(hr = m_pDXVAManager->OpenDeviceHandle(&m_hD3d9Device));
+	IF_FAILED_RETURN(m_pDXVAManager->OpenDeviceHandle(&m_hD3d9Device));
 
-	IF_FAILED_RETURN(hr = m_pDXVAManager->GetVideoService(m_hD3d9Device, IID_IDirectXVideoDecoderService, reinterpret_cast<void**>(&m_pDecoderService)));
+	IF_FAILED_RETURN(m_pDXVAManager->GetVideoService(m_hD3d9Device, IID_IDirectXVideoDecoderService, reinterpret_cast<void**>(&m_pDecoderService)));
 
-	IF_FAILED_RETURN(hr = InitDecoderService());
+	IF_FAILED_RETURN(InitDecoderService());
 
-	IF_FAILED_RETURN(hr = InitVideoDecoder(sps));
+	IF_FAILED_RETURN(InitVideoDecoder(sps));
 
-	IF_FAILED_RETURN(hr = InitVideoProcessor());
+	IF_FAILED_RETURN(InitVideoProcessor());
 
 	return hr;
 }
@@ -228,8 +228,8 @@ HRESULT CDxva2Decoder::DecodeFrame(CMFBuffer& cMFNaluBuffer, const PICTURE_INFO&
 
 	try{
 
-		IF_FAILED_THROW(hr = m_pDXVAManager->TestDevice(m_hD3d9Device));
-		IF_FAILED_THROW(hr = m_pDXVAManager->LockDevice(m_hD3d9Device, &pDevice, TRUE));
+		IF_FAILED_THROW(m_pDXVAManager->TestDevice(m_hD3d9Device));
+		IF_FAILED_THROW(m_pDXVAManager->LockDevice(m_hD3d9Device, &pDevice, TRUE));
 
 		do{
 
@@ -242,31 +242,31 @@ HRESULT CDxva2Decoder::DecodeFrame(CMFBuffer& cMFNaluBuffer, const PICTURE_INFO&
 
 		// Picture
 		InitPictureParams(m_dwCurPictureId, Picture);
-		IF_FAILED_THROW(hr = m_pVideoDecoder->GetBuffer(DXVA2_PictureParametersBufferType, &pBuffer, &uiSize));
+		IF_FAILED_THROW(m_pVideoDecoder->GetBuffer(DXVA2_PictureParametersBufferType, &pBuffer, &uiSize));
 		assert(sizeof(DXVA_PicParams_H264) <= uiSize);
 		memcpy(pBuffer, &m_H264PictureParams, sizeof(DXVA_PicParams_H264));
-		IF_FAILED_THROW(hr = m_pVideoDecoder->ReleaseBuffer(DXVA2_PictureParametersBufferType));
+		IF_FAILED_THROW(m_pVideoDecoder->ReleaseBuffer(DXVA2_PictureParametersBufferType));
 
 		// QuantaMatrix
-		IF_FAILED_THROW(hr = m_pVideoDecoder->GetBuffer(DXVA2_InverseQuantizationMatrixBufferType, &pBuffer, &uiSize));
+		IF_FAILED_THROW(m_pVideoDecoder->GetBuffer(DXVA2_InverseQuantizationMatrixBufferType, &pBuffer, &uiSize));
 		assert(sizeof(DXVA_Qmatrix_H264) <= uiSize);
 		memcpy(pBuffer, &m_H264QuantaMatrix, sizeof(DXVA_Qmatrix_H264));
-		IF_FAILED_THROW(hr = m_pVideoDecoder->ReleaseBuffer(DXVA2_InverseQuantizationMatrixBufferType));
+		IF_FAILED_THROW(m_pVideoDecoder->ReleaseBuffer(DXVA2_InverseQuantizationMatrixBufferType));
 
 		// BitStream
-		IF_FAILED_THROW(hr = m_pVideoDecoder->GetBuffer(DXVA2_BitStreamDateBufferType, &pBuffer, &uiSize));
-		IF_FAILED_THROW(hr = AddNalUnitBufferPadding(cMFNaluBuffer, uiSize));
+		IF_FAILED_THROW(m_pVideoDecoder->GetBuffer(DXVA2_BitStreamDateBufferType, &pBuffer, &uiSize));
+		IF_FAILED_THROW(AddNalUnitBufferPadding(cMFNaluBuffer, uiSize));
 		assert(cMFNaluBuffer.GetBufferSize() <= uiSize);
 		memcpy(pBuffer, cMFNaluBuffer.GetStartBuffer(), cMFNaluBuffer.GetBufferSize());
-		IF_FAILED_THROW(hr = m_pVideoDecoder->ReleaseBuffer(DXVA2_BitStreamDateBufferType));
+		IF_FAILED_THROW(m_pVideoDecoder->ReleaseBuffer(DXVA2_BitStreamDateBufferType));
 
 		// Slices
-		IF_FAILED_THROW(hr = m_pVideoDecoder->GetBuffer(DXVA2_SliceControlBufferType, &pBuffer, &uiSize));
+		IF_FAILED_THROW(m_pVideoDecoder->GetBuffer(DXVA2_SliceControlBufferType, &pBuffer, &uiSize));
 		assert(sizeof(DXVA_Slice_H264_Short) <= uiSize);
 		DXVA_Slice_H264_Short SliceH264Short = {0};
 		SliceH264Short.SliceBytesInBuffer = cMFNaluBuffer.GetBufferSize();
 		memcpy(pBuffer, &SliceH264Short, sizeof(DXVA_Slice_H264_Short));
-		IF_FAILED_THROW(hr = m_pVideoDecoder->ReleaseBuffer(DXVA2_SliceControlBufferType));
+		IF_FAILED_THROW(m_pVideoDecoder->ReleaseBuffer(DXVA2_SliceControlBufferType));
 
 		// CompBuffers
 		// Allready set
@@ -277,11 +277,11 @@ HRESULT CDxva2Decoder::DecodeFrame(CMFBuffer& cMFNaluBuffer, const PICTURE_INFO&
 		m_BufferDesc[3].DataSize = sizeof(DXVA_Slice_H264_Short);
 		m_BufferDesc[3].NumMBsInBuffer = m_BufferDesc[2].NumMBsInBuffer;
 
-		IF_FAILED_THROW(hr = m_pVideoDecoder->Execute(&m_ExecuteParams));
+		IF_FAILED_THROW(m_pVideoDecoder->Execute(&m_ExecuteParams));
 
-		IF_FAILED_THROW(hr = m_pVideoDecoder->EndFrame(NULL));
+		IF_FAILED_THROW(m_pVideoDecoder->EndFrame(NULL));
 
-		IF_FAILED_THROW(hr = m_pDXVAManager->UnlockDevice(m_hD3d9Device, FALSE));
+		IF_FAILED_THROW(m_pDXVAManager->UnlockDevice(m_hD3d9Device, FALSE));
 
 		m_dwCurPictureId++;
 	}
@@ -302,7 +302,7 @@ HRESULT CDxva2Decoder::InitDecoderService(){
 
 	try{
 
-		IF_FAILED_THROW(hr = m_pDecoderService->GetDecoderDeviceGuids(&uiCount, &pGuids));
+		IF_FAILED_THROW(m_pDecoderService->GetDecoderDeviceGuids(&uiCount, &pGuids));
 
 		for(UINT ui = 0; ui < uiCount; ui++){
 
@@ -312,10 +312,10 @@ HRESULT CDxva2Decoder::InitDecoderService(){
 			}
 		}
 
-		IF_FAILED_THROW(hr = (bDecoderH264 ? S_OK : E_FAIL));
+		IF_FAILED_THROW(bDecoderH264 ? S_OK : E_FAIL);
 		bDecoderH264 = FALSE;
 
-		IF_FAILED_THROW(hr = m_pDecoderService->GetDecoderRenderTargets(m_gH264Vld, &uiCount, &pFormats));
+		IF_FAILED_THROW(m_pDecoderService->GetDecoderRenderTargets(m_gH264Vld, &uiCount, &pFormats));
 
 		for(UINT ui = 0; ui < uiCount; ui++){
 
@@ -325,7 +325,7 @@ HRESULT CDxva2Decoder::InitDecoderService(){
 			}
 		}
 
-		IF_FAILED_THROW(hr = (bDecoderH264 ? S_OK : E_FAIL));
+		IF_FAILED_THROW(bDecoderH264 ? S_OK : E_FAIL);
 	}
 	catch(HRESULT){}
 
@@ -342,9 +342,9 @@ HRESULT CDxva2Decoder::InitVideoDecoder(const SPS_DATA& sps){
 	UINT uiCount;
 	UINT uiIndex = 0;
 
-	IF_FAILED_RETURN(hr = m_pDecoderService->GetDecoderConfigurations(m_gH264Vld, &m_Dxva2Desc, NULL, &uiCount, &pConfigs));
+	IF_FAILED_RETURN(m_pDecoderService->GetDecoderConfigurations(m_gH264Vld, &m_Dxva2Desc, NULL, &uiCount, &pConfigs));
 
-	IF_FAILED_RETURN(hr = ((pConfigs == NULL || uiCount == 0) ? E_FAIL : S_OK));
+	IF_FAILED_RETURN((pConfigs == NULL || uiCount == 0) ? E_FAIL : S_OK);
 
 	for(; uiIndex < uiCount; uiIndex++){
 
@@ -376,14 +376,14 @@ HRESULT CDxva2Decoder::InitVideoDecoder(const SPS_DATA& sps){
 		}
 	}
 
-	IF_FAILED_RETURN(hr = (m_pConfigs == NULL ? E_FAIL : S_OK));
+	IF_FAILED_RETURN(m_pConfigs == NULL ? E_FAIL : S_OK);
 
 	assert(m_pVideoDecoder == NULL && m_pSurface9[0] == NULL);
 
-	IF_FAILED_RETURN(hr = m_pDecoderService->CreateSurface(m_Dxva2Desc.SampleWidth, m_Dxva2Desc.SampleHeight, NUM_DXVA2_SURFACE - 1,
+	IF_FAILED_RETURN(m_pDecoderService->CreateSurface(m_Dxva2Desc.SampleWidth, m_Dxva2Desc.SampleHeight, NUM_DXVA2_SURFACE - 1,
 		static_cast<D3DFORMAT>(D3DFMT_NV12), D3DPOOL_DEFAULT, 0, DXVA2_VideoDecoderRenderTarget, m_pSurface9, NULL));
 
-	IF_FAILED_RETURN(hr = m_pDecoderService->CreateVideoDecoder(m_gH264Vld, &m_Dxva2Desc, &m_pConfigs[uiIndex], m_pSurface9, NUM_DXVA2_SURFACE, &m_pVideoDecoder));
+	IF_FAILED_RETURN(m_pDecoderService->CreateVideoDecoder(m_gH264Vld, &m_Dxva2Desc, &m_pConfigs[uiIndex], m_pSurface9, NUM_DXVA2_SURFACE, &m_pVideoDecoder));
 
 	InitDxva2Struct(sps);
 
@@ -519,9 +519,9 @@ HRESULT CDxva2Decoder::AddNalUnitBufferPadding(CMFBuffer& cMFNaluBuffer, const U
 
 	UINT uiPadding = MIN(128 - (cMFNaluBuffer.GetBufferSize() & 127), uiSize);
 
-	IF_FAILED_RETURN(hr = cMFNaluBuffer.Reserve(uiPadding));
+	IF_FAILED_RETURN(cMFNaluBuffer.Reserve(uiPadding));
 	memset(cMFNaluBuffer.GetReadStartBuffer(), 0, uiPadding);
-	IF_FAILED_RETURN(hr = cMFNaluBuffer.SetEndPosition(uiPadding));
+	IF_FAILED_RETURN(cMFNaluBuffer.SetEndPosition(uiPadding));
 
 	return hr;
 }

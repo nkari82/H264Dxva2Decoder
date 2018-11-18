@@ -51,28 +51,28 @@ HRESULT ProcessDecode(){
 
 		pH264AtomParser = new (std::nothrow)CH264AtomParser;
 
-		IF_FAILED_THROW(hr = (pH264AtomParser == NULL ? E_OUTOFMEMORY : S_OK));
+		IF_FAILED_THROW(pH264AtomParser == NULL ? E_OUTOFMEMORY : S_OK);
 
 		pDxva2Decoder = new (std::nothrow)CDxva2Decoder;
 
-		IF_FAILED_THROW(hr = (pDxva2Decoder == NULL ? E_OUTOFMEMORY : S_OK));
+		IF_FAILED_THROW(pDxva2Decoder == NULL ? E_OUTOFMEMORY : S_OK);
 
-		IF_FAILED_THROW(hr = pH264AtomParser->Initialize(H264_INPUT_FILE));
-		IF_FAILED_THROW(hr = pH264AtomParser->ParseMp4());
-		IF_FAILED_THROW(hr = pH264AtomParser->GetFirstVideoStream(&dwTrackId));
+		IF_FAILED_THROW(pH264AtomParser->Initialize(H264_INPUT_FILE));
+		IF_FAILED_THROW(pH264AtomParser->ParseMp4());
+		IF_FAILED_THROW(pH264AtomParser->GetFirstVideoStream(&dwTrackId));
 
 		iNaluLenghtSize = pH264AtomParser->GetNaluLenghtSize();
 		cH264NaluParser.SetNaluLenghtSize(iNaluLenghtSize);
 
-		IF_FAILED_THROW(hr = pH264AtomParser->GetVideoConfigDescriptor(dwTrackId, &pVideoData, &dwBufferSize));
-		IF_FAILED_THROW(hr = cH264NaluParser.ParseVideoConfigDescriptor(pVideoData, dwBufferSize));
+		IF_FAILED_THROW(pH264AtomParser->GetVideoConfigDescriptor(dwTrackId, &pVideoData, &dwBufferSize));
+		IF_FAILED_THROW(cH264NaluParser.ParseVideoConfigDescriptor(pVideoData, dwBufferSize));
 
 		DXVA2_Frequency Dxva2Freq;
-		IF_FAILED_THROW(hr = pH264AtomParser->GetVideoFrameRate(dwTrackId, &Dxva2Freq.Numerator, &Dxva2Freq.Denominator));
-		IF_FAILED_THROW(hr = pDxva2Decoder->InitDXVA2(cH264NaluParser.GetSPS(), cH264NaluParser.GetWidth(), cH264NaluParser.GetHeight(), Dxva2Freq.Numerator, Dxva2Freq.Denominator));
+		IF_FAILED_THROW(pH264AtomParser->GetVideoFrameRate(dwTrackId, &Dxva2Freq.Numerator, &Dxva2Freq.Denominator));
+		IF_FAILED_THROW(pDxva2Decoder->InitDXVA2(cH264NaluParser.GetSPS(), cH264NaluParser.GetWidth(), cH264NaluParser.GetHeight(), Dxva2Freq.Numerator, Dxva2Freq.Denominator));
 
-		IF_FAILED_THROW(hr = pVideoBuffer.Initialize(H264_BUFFER_SIZE));
-		IF_FAILED_THROW(hr = pNalUnitBuffer.Initialize(H264_BUFFER_SIZE));
+		IF_FAILED_THROW(pVideoBuffer.Initialize(H264_BUFFER_SIZE));
+		IF_FAILED_THROW(pNalUnitBuffer.Initialize(H264_BUFFER_SIZE));
 
 		while(pH264AtomParser->GetNextSample(dwTrackId, &pVideoData, &dwBufferSize) == S_OK){
 
@@ -83,20 +83,20 @@ HRESULT ProcessDecode(){
 				break;
 			}
 
-			IF_FAILED_THROW(hr = pVideoBuffer.Reserve(dwBufferSize));
+			IF_FAILED_THROW(pVideoBuffer.Reserve(dwBufferSize));
 			memcpy(pVideoBuffer.GetReadStartBuffer(), pVideoData, dwBufferSize);
-			IF_FAILED_THROW(hr = pVideoBuffer.SetEndPosition(dwBufferSize));
+			IF_FAILED_THROW(pVideoBuffer.SetEndPosition(dwBufferSize));
 
 			dwTotalSample++;
 
 			do{
 
 				pNalUnitBuffer.Reset();
-				IF_FAILED_THROW(hr = pNalUnitBuffer.Reserve(pVideoBuffer.GetBufferSize()));
+				IF_FAILED_THROW(pNalUnitBuffer.Reserve(pVideoBuffer.GetBufferSize()));
 				memcpy(pNalUnitBuffer.GetStartBuffer(), pVideoBuffer.GetStartBuffer(), pVideoBuffer.GetBufferSize());
-				IF_FAILED_THROW(hr = pNalUnitBuffer.SetEndPosition(pVideoBuffer.GetBufferSize()));
+				IF_FAILED_THROW(pNalUnitBuffer.SetEndPosition(pVideoBuffer.GetBufferSize()));
 
-				IF_FAILED_THROW(hr = cH264NaluParser.ParseNaluHeader(pVideoBuffer));
+				IF_FAILED_THROW(cH264NaluParser.ParseNaluHeader(pVideoBuffer));
 
 				if(cH264NaluParser.IsNalUnitCodedSlice()){
 
@@ -107,15 +107,22 @@ HRESULT ProcessDecode(){
 						memcpy(pNalUnitBuffer.GetStartBuffer(), btStartCode, 4);
 					}
 					else{
-						IF_FAILED_THROW(hr = AddByteAndConvertAvccToAnnexB(pNalUnitBuffer));
+						IF_FAILED_THROW(AddByteAndConvertAvccToAnnexB(pNalUnitBuffer));
 					}
 
-					IF_FAILED_THROW(hr = pDxva2Decoder->DecodeFrame(pNalUnitBuffer, cH264NaluParser.GetPicture()));
-					IF_FAILED_THROW(hr = pDxva2Decoder->DisplayFrame());
+					IF_FAILED_THROW(pDxva2Decoder->DecodeFrame(pNalUnitBuffer, cH264NaluParser.GetPicture()));
+					IF_FAILED_THROW(pDxva2Decoder->DisplayFrame());
 				}
 
-				if(pVideoBuffer.GetBufferSize() != 0){
+				if(hr == S_FALSE){
 
+					// S_FALSE means slice is corrupted. Just clear previous frames presentation, sometimes it's ok to continue
+					pDxva2Decoder->ClearPresentation();
+					hr = S_OK;
+				}
+				else if(pVideoBuffer.GetBufferSize() != 0){
+
+					// Some slices contain SEI message and IFrame, continue parsing
 					hr = S_FALSE;
 				}
 			}
@@ -159,10 +166,10 @@ HRESULT AddByteAndConvertAvccToAnnexB(CMFBuffer& pNalUnitBuffer){
 	HRESULT hr;
 	BYTE btStartCode[3] = {0x00, 0x00, 0x01};
 
-	IF_FAILED_RETURN(hr = pNalUnitBuffer.Reserve(1));
+	IF_FAILED_RETURN(pNalUnitBuffer.Reserve(1));
 	memcpy(pNalUnitBuffer.GetStartBuffer() + 1, pNalUnitBuffer.GetStartBuffer(), pNalUnitBuffer.GetBufferSize());
 	memcpy(pNalUnitBuffer.GetStartBuffer(), btStartCode, 3);
-	IF_FAILED_RETURN(hr = pNalUnitBuffer.SetEndPosition(1));
+	IF_FAILED_RETURN(pNalUnitBuffer.SetEndPosition(1));
 
 	return hr;
 }

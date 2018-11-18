@@ -17,7 +17,7 @@ HRESULT CMFByteStream::CreateInstance(CMFByteStream** ppByteStream){
 	TRACE_BYTESTREAM((L"MFByteStream::CreateInstance"));
 
 	HRESULT hr;
-	IF_FAILED_RETURN(hr = (ppByteStream == NULL ? E_POINTER : S_OK));
+	IF_FAILED_RETURN(ppByteStream == NULL ? E_POINTER : S_OK);
 
 	CMFByteStream* pByteStream = new (std::nothrow)CMFByteStream();
 
@@ -73,7 +73,7 @@ HRESULT CMFByteStream::Invoke(IMFAsyncResult* pResult){
 	TRACE_BYTESTREAM((L"MFByteStream::Invoke"));
 
 	HRESULT hr;
-	IF_FAILED_RETURN(hr = (pResult == NULL ? E_POINTER : S_OK));
+	IF_FAILED_RETURN(pResult == NULL ? E_POINTER : S_OK);
 
 	IUnknown* pState = NULL;
 	IUnknown* pUnk = NULL;
@@ -81,15 +81,15 @@ HRESULT CMFByteStream::Invoke(IMFAsyncResult* pResult){
 
 	try{
 
-		IF_FAILED_THROW(hr = pResult->GetState(&pState));
+		IF_FAILED_THROW(pResult->GetState(&pState));
 
-		IF_FAILED_THROW(hr = pState->QueryInterface(IID_PPV_ARGS(&pCallerResult)));
+		IF_FAILED_THROW(pState->QueryInterface(IID_PPV_ARGS(&pCallerResult)));
 
-		IF_FAILED_THROW(hr = pCallerResult->GetObject(&pUnk));
+		IF_FAILED_THROW(pCallerResult->GetObject(&pUnk));
 
 		CMFReadParam* pReadParam = static_cast<CMFReadParam*>(pUnk);
 
-		IF_FAILED_THROW(hr = Read(pReadParam));
+		IF_FAILED_THROW(Read(pReadParam));
 	}
 	catch(HRESULT){}
 
@@ -112,15 +112,15 @@ HRESULT CMFByteStream::Initialize(LPCWSTR pwszFile){
 
 	HRESULT hr;
 
-	IF_FAILED_RETURN(hr = (pwszFile == NULL ? E_POINTER : S_OK));
+	IF_FAILED_RETURN(pwszFile == NULL ? E_POINTER : S_OK);
 
 	AutoLock lock(m_CriticSection);
 
-	IF_FAILED_RETURN(hr = (m_hFile != INVALID_HANDLE_VALUE ? E_UNEXPECTED : S_OK));
+	IF_FAILED_RETURN(m_hFile != INVALID_HANDLE_VALUE ? E_UNEXPECTED : S_OK);
 
 	m_hFile = CreateFile(pwszFile, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
 
-	IF_FAILED_RETURN(hr = (m_hFile == INVALID_HANDLE_VALUE ? E_UNEXPECTED : S_OK));
+	IF_FAILED_RETURN(m_hFile == INVALID_HANDLE_VALUE ? E_UNEXPECTED : S_OK);
 
 	LARGE_INTEGER liFileSize;
 
@@ -128,11 +128,11 @@ HRESULT CMFByteStream::Initialize(LPCWSTR pwszFile){
 
 		CloseHandle(m_hFile);
 		m_hFile = INVALID_HANDLE_VALUE;
-		IF_FAILED_RETURN(hr = E_UNEXPECTED);
+		IF_FAILED_RETURN(E_UNEXPECTED);
 	}
 
 	m_pReadParam = new (std::nothrow)CMFReadParam();
-	IF_FAILED_RETURN(hr = (m_pReadParam == NULL ? E_OUTOFMEMORY : S_OK));
+	IF_FAILED_RETURN(m_pReadParam == NULL ? E_OUTOFMEMORY : S_OK);
 
 	m_wszFile = pwszFile;
 
@@ -147,12 +147,12 @@ HRESULT CMFByteStream::Start(){
 
 	AutoLock lock(m_CriticSection);
 
-	IF_FAILED_RETURN(hr = (m_hFile != INVALID_HANDLE_VALUE ? E_UNEXPECTED : S_OK));
-	IF_FAILED_RETURN(hr = (m_pReadParam != NULL ? E_UNEXPECTED : S_OK));
+	IF_FAILED_RETURN(m_hFile != INVALID_HANDLE_VALUE ? E_UNEXPECTED : S_OK);
+	IF_FAILED_RETURN(m_pReadParam != NULL ? E_UNEXPECTED : S_OK);
 
 	m_hFile = CreateFile(m_wszFile.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
 
-	IF_FAILED_RETURN(hr = (m_hFile == INVALID_HANDLE_VALUE ? E_UNEXPECTED : S_OK));
+	IF_FAILED_RETURN(m_hFile == INVALID_HANDLE_VALUE ? E_UNEXPECTED : S_OK);
 
 	LARGE_INTEGER liFileSize;
 
@@ -160,11 +160,11 @@ HRESULT CMFByteStream::Start(){
 
 		CloseHandle(m_hFile);
 		m_hFile = INVALID_HANDLE_VALUE;
-		IF_FAILED_RETURN(hr = E_UNEXPECTED);
+		IF_FAILED_RETURN(E_UNEXPECTED);
 	}
 
 	m_pReadParam = new (std::nothrow)CMFReadParam();
-	IF_FAILED_RETURN(hr = (m_pReadParam == NULL ? E_OUTOFMEMORY : S_OK));
+	IF_FAILED_RETURN(m_pReadParam == NULL ? E_OUTOFMEMORY : S_OK);
 
 	return hr;
 }
@@ -235,9 +235,9 @@ HRESULT CMFByteStream::BeginRead(BYTE* pData, ULONG ulToRead, IMFAsyncCallback* 
 	IMFAsyncResult* pResult = NULL;
 
 	// Do MFCreateAsyncResult Release pReadParam if Failed ?
-	IF_FAILED_RETURN(hr = MFCreateAsyncResult(m_pReadParam, pCallback, NULL, &pResult));
+	IF_FAILED_RETURN(MFCreateAsyncResult(m_pReadParam, pCallback, NULL, &pResult));
 
-	LOG_HRESULT(hr = MFPutWorkItem(MFASYNC_CALLBACK_QUEUE_STANDARD, this, pResult));
+	LOG_HRESULT(MFPutWorkItem(MFASYNC_CALLBACK_QUEUE_STANDARD, this, pResult));
 
 	pResult->Release();
 
@@ -249,7 +249,7 @@ HRESULT CMFByteStream::EndRead(IMFAsyncResult* pResult, ULONG* pulRead){
 	TRACE_BYTESTREAM((L"MFByteStream::EndRead"));
 
 	HRESULT hr;
-	IF_FAILED_RETURN(hr = (pResult == NULL || pulRead == NULL ? E_POINTER : S_OK));
+	IF_FAILED_RETURN(pResult == NULL || pulRead == NULL ? E_POINTER : S_OK);
 
 	*pulRead = 0;
 	IUnknown* pUnk = NULL;
@@ -260,9 +260,9 @@ HRESULT CMFByteStream::EndRead(IMFAsyncResult* pResult, ULONG* pulRead){
 
 	try{
 
-		IF_FAILED_THROW(hr = pResult->GetStatus());
+		IF_FAILED_THROW(pResult->GetStatus());
 
-		IF_FAILED_THROW(hr = pResult->GetObject(&pUnk));
+		IF_FAILED_THROW(pResult->GetObject(&pUnk));
 
 		CMFReadParam* pReadParam = static_cast<CMFReadParam*>(pUnk);
 
@@ -283,11 +283,11 @@ HRESULT CMFByteStream::Seek(const LONG lDistance){
 
 	AutoLock lock(m_CriticSection);
 
-	IF_FAILED_RETURN(hr = (m_hFile == INVALID_HANDLE_VALUE ? E_UNEXPECTED : S_OK));
+	IF_FAILED_RETURN(m_hFile == INVALID_HANDLE_VALUE ? E_UNEXPECTED : S_OK);
 
 	DWORD dwPosition = SetFilePointer(m_hFile, lDistance, NULL, FILE_CURRENT);
 
-	IF_FAILED_RETURN(hr = (dwPosition == INVALID_SET_FILE_POINTER ? E_FAIL : S_OK));
+	IF_FAILED_RETURN(dwPosition == INVALID_SET_FILE_POINTER ? E_FAIL : S_OK);
 
 	return hr;
 }
@@ -300,11 +300,11 @@ HRESULT CMFByteStream::SeekHigh(LARGE_INTEGER liDistance){
 
 	AutoLock lock(m_CriticSection);
 
-	IF_FAILED_RETURN(hr = (m_hFile == INVALID_HANDLE_VALUE ? E_UNEXPECTED : S_OK));
+	IF_FAILED_RETURN(m_hFile == INVALID_HANDLE_VALUE ? E_UNEXPECTED : S_OK);
 
 	DWORD dwPosition = SetFilePointer(m_hFile, liDistance.LowPart, &liDistance.HighPart, FILE_CURRENT);
 
-	IF_FAILED_RETURN(hr = (dwPosition == INVALID_SET_FILE_POINTER || GetLastError() != NO_ERROR ? E_FAIL : S_OK));
+	IF_FAILED_RETURN(dwPosition == INVALID_SET_FILE_POINTER || GetLastError() != NO_ERROR ? E_FAIL : S_OK);
 
 	return hr;
 }
@@ -317,11 +317,11 @@ HRESULT CMFByteStream::SeekEnd(const LONG lDistance){
 
 	AutoLock lock(m_CriticSection);
 
-	IF_FAILED_RETURN(hr = (m_hFile == INVALID_HANDLE_VALUE ? E_UNEXPECTED : S_OK));
+	IF_FAILED_RETURN(m_hFile == INVALID_HANDLE_VALUE ? E_UNEXPECTED : S_OK);
 
 	DWORD dwPosition = SetFilePointer(m_hFile, -lDistance, NULL, FILE_END);
 
-	IF_FAILED_RETURN(hr = (dwPosition == INVALID_SET_FILE_POINTER ? E_FAIL : S_OK));
+	IF_FAILED_RETURN(dwPosition == INVALID_SET_FILE_POINTER ? E_FAIL : S_OK);
 
 	return hr;
 }
@@ -334,11 +334,11 @@ HRESULT CMFByteStream::Reset(){
 
 	AutoLock lock(m_CriticSection);
 
-	IF_FAILED_RETURN(hr = (m_hFile == INVALID_HANDLE_VALUE ? E_UNEXPECTED : S_OK));
+	IF_FAILED_RETURN(m_hFile == INVALID_HANDLE_VALUE ? E_UNEXPECTED : S_OK);
 
 	DWORD dwPosition = SetFilePointer(m_hFile, 0, NULL, FILE_BEGIN);
 
-	IF_FAILED_RETURN(hr = (dwPosition == INVALID_SET_FILE_POINTER ? E_FAIL : S_OK));
+	IF_FAILED_RETURN(dwPosition == INVALID_SET_FILE_POINTER ? E_FAIL : S_OK);
 
 	return hr;
 }

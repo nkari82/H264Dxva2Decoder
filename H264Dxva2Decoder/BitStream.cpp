@@ -56,7 +56,7 @@ DWORD CBitStream::GetBits(const DWORD numBits){
 	HRESULT hr;
 
 	if(numBits > 32){
-		IF_FAILED_THROW(hr = BITSTREAM_TOO_MANY_BITS);
+		IF_FAILED_THROW(BITSTREAM_TOO_MANY_BITS);
 	}
 
 	if(numBits == 0){
@@ -87,7 +87,7 @@ DWORD CBitStream::GetBits(const DWORD numBits){
 			nbits -= 8;
 
 			if(m_chDecBufferSize < 8)
-				IF_FAILED_THROW(hr = BITSTREAM_PAST_END);
+				IF_FAILED_THROW(BITSTREAM_PAST_END);
 
 			retData |= *m_chDecBuffer++ << nbits;
 			m_chDecBufferSize -= 8;
@@ -98,7 +98,7 @@ DWORD CBitStream::GetBits(const DWORD numBits){
 			nbits -= 8;
 
 			if(m_chDecBufferSize < 8)
-				IF_FAILED_THROW(hr = BITSTREAM_PAST_END);
+				IF_FAILED_THROW(BITSTREAM_PAST_END);
 
 			retData |= *m_chDecBuffer++ << nbits;
 			m_chDecBufferSize -= 8;
@@ -108,7 +108,7 @@ DWORD CBitStream::GetBits(const DWORD numBits){
 			nbits -= 8;
 
 			if(m_chDecBufferSize < 8)
-				IF_FAILED_THROW(hr = BITSTREAM_PAST_END);
+				IF_FAILED_THROW(BITSTREAM_PAST_END);
 
 			retData |= *m_chDecBuffer++ << nbits;
 			m_chDecBufferSize -= 8;
@@ -118,7 +118,7 @@ DWORD CBitStream::GetBits(const DWORD numBits){
 		}
 
 		if(m_chDecBufferSize < nbits){
-			IF_FAILED_THROW(hr = BITSTREAM_PAST_END);
+			IF_FAILED_THROW(BITSTREAM_PAST_END);
 		}
 
 		m_chDecData = *m_chDecBuffer++;
@@ -137,7 +137,7 @@ void CBitStream::CheckZeroStream(const int count){
 	HRESULT hr;
 
 	if(val != 0){
-		IF_FAILED_THROW(hr = BITSTREAM_NON_ZERO);
+		IF_FAILED_THROW(BITSTREAM_NON_ZERO);
 	}
 }
 
