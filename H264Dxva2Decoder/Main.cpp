@@ -45,6 +45,7 @@ HRESULT ProcessDecode(){
 	int iNaluLenghtSize;
 	DWORD dwMaxSampleBufferSize = 0;
 	DWORD dwTrackId = 0;
+	LONGLONG llTime = 0;
 	BYTE btStartCode[4] = {0x00, 0x00, 0x00, 0x01};
 
 	try{
@@ -74,7 +75,7 @@ HRESULT ProcessDecode(){
 		IF_FAILED_THROW(pVideoBuffer.Initialize(H264_BUFFER_SIZE));
 		IF_FAILED_THROW(pNalUnitBuffer.Initialize(H264_BUFFER_SIZE));
 
-		while(pH264AtomParser->GetNextSample(dwTrackId, &pVideoData, &dwBufferSize) == S_OK){
+		while(pH264AtomParser->GetNextSample(dwTrackId, &pVideoData, &dwBufferSize, &llTime) == S_OK){
 
 			if(dwMaxSampleBufferSize < dwBufferSize)
 				dwMaxSampleBufferSize = dwBufferSize;
@@ -110,7 +111,7 @@ HRESULT ProcessDecode(){
 						IF_FAILED_THROW(AddByteAndConvertAvccToAnnexB(pNalUnitBuffer));
 					}
 
-					IF_FAILED_THROW(pDxva2Decoder->DecodeFrame(pNalUnitBuffer, cH264NaluParser.GetPicture()));
+					IF_FAILED_THROW(pDxva2Decoder->DecodeFrame(pNalUnitBuffer, cH264NaluParser.GetPicture(), llTime));
 					IF_FAILED_THROW(pDxva2Decoder->DisplayFrame());
 				}
 

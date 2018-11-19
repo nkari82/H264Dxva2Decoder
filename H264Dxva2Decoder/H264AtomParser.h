@@ -14,7 +14,7 @@ public:
 	HRESULT Initialize(LPCWSTR);
 	HRESULT ParseMp4();
 	void Delete();
-	HRESULT GetNextSample(const DWORD, BYTE**, DWORD*);
+	HRESULT GetNextSample(const DWORD, BYTE**, DWORD*, LONGLONG*);
 	HRESULT GetVideoConfigDescriptor(const DWORD, BYTE**, DWORD*);
 	HRESULT GetVideoFrameRate(const DWORD, UINT*, UINT*);
 	HRESULT GetFirstVideoStream(DWORD*);
@@ -67,6 +67,7 @@ private:
 		UINT64 ui64VideoDuration;
 		DWORD dwWidth;
 		DWORD dwHeight;
+		DWORD dwFixedSampleSize;
 		vector<CHUNCK_INFO> vChunks;
 		vector<SAMPLE_INFO> vSamples;
 		vector<DWORD> vSyncSamples;
@@ -105,7 +106,7 @@ private:
 	HRESULT ParseSyncSampleHeader(vector<DWORD>&, BYTE*, const DWORD);
 	HRESULT ParseCompositionOffsetHeader(vector<TIME_INFO>&, BYTE*, const DWORD);
 	HRESULT ParseSampleChunckHeader(vector<CHUNCK_INFO>&, BYTE*, const DWORD);
-	HRESULT ParseSampleSizeHeader(vector<SAMPLE_INFO>&, BYTE*, const DWORD);
+	HRESULT ParseSampleSizeHeader(vector<SAMPLE_INFO>&, DWORD*, BYTE*, const DWORD);
 	HRESULT ParseChunckOffsetHeader(vector<DWORD>&, BYTE*, const DWORD);
 	HRESULT ParseChunckOffset64Header(vector<DWORD>&, BYTE*, const DWORD);
 

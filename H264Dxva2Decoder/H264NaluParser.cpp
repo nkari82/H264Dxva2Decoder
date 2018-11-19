@@ -134,7 +134,7 @@ HRESULT CH264NaluParser::ParseNaluHeader(CMFBuffer& pVideoBuffer){
 
 	if(dwNaluSize == 0 || dwNaluSize > pVideoBuffer.GetBufferSize()){
 
-		TRACE((L"ParseNalHeader : Nalu size = %u", dwNaluSize));
+		TRACE((L"ParseNalHeader : Nalu size = %u - Buffer size = %u", dwNaluSize, pVideoBuffer.GetBufferSize()));
 		pVideoBuffer.Reset();
 		return S_FALSE;
 	}
@@ -325,12 +325,6 @@ HRESULT CH264NaluParser::ParsePPS(){
 
 	pPPS->entropy_coding_mode_flag = m_cBitStream.GetBits(1) ? TRUE : FALSE;
 	pPPS->pic_order_present_flag = m_cBitStream.GetBits(1) ? TRUE : FALSE;
-
-	/*if(pPPS->pic_order_present_flag != FALSE){
-		// todo
-		IF_FAILED_RETURN(E_FAIL);
-	}*/
-
 	pPPS->num_slice_groups_minus1 = m_cBitStream.UGolomb();
 
 	if((pPPS->num_slice_groups_minus1 + 1) > MAX_SLICEGROUP_IDS){
@@ -399,6 +393,7 @@ HRESULT CH264NaluParser::ParsePPS(){
 HRESULT CH264NaluParser::ParseCodedSlice(){
 
 	HRESULT hr;
+	BOOL field_pic_flag = 0;
 
 	ZeroMemory(m_Picture.slice.vReorderedList, sizeof(m_Picture.slice.vReorderedList));
 	ZeroMemory(&m_Picture.slice.PicMarking, sizeof(m_Picture.slice.PicMarking));
@@ -412,7 +407,11 @@ HRESULT CH264NaluParser::ParseCodedSlice(){
 	m_Picture.slice.pic_parameter_set_id = (USHORT)m_cBitStream.UGolomb();
 	m_Picture.slice.frame_num = (USHORT)m_cBitStream.GetBits(m_Picture.sps.log2_max_frame_num_minus4 + 4);
 
-	// if !m_Picture.sps.frame_mbs_only_flag : field_pic_flag ... if(field_pic_flag) bottom_field_flag
+	if(!m_Picture.sps.frame_mbs_only_flag){
+
+		// todo : field_pic_flag ... if(field_pic_flag) bottom_field_flag
+		IF_FAILED_RETURN(E_FAIL);
+	}
 
 	if(m_Picture.NalUnitType == NAL_UNIT_CODED_SLICE_IDR){
 
@@ -428,8 +427,11 @@ HRESULT CH264NaluParser::ParseCodedSlice(){
 		// assert(pic_order_cnt_lsb < MaxPicOrderCntLsb)
 		// if(m_Picture.pps.bBottomFieldPicOrderFlag && !field_pic_flag)
 
-		if(m_Picture.pps.pic_order_present_flag)
+		if(m_Picture.pps.pic_order_present_flag && !field_pic_flag){
+
+			// todo : delta_pic_order_cnt_bottom
 			/*DWORD delta_pic_order_cnt_bottom =*/ m_cBitStream.SGolomb();
+		}
 	}
 	else{
 

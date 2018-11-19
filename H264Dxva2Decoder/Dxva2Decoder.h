@@ -18,7 +18,7 @@ public:
 
 	HRESULT InitDXVA2(const SPS_DATA&, const UINT, const UINT, const UINT, const UINT);
 	void OnRelease();
-	HRESULT DecodeFrame(CMFBuffer&, const PICTURE_INFO&);
+	HRESULT DecodeFrame(CMFBuffer&, const PICTURE_INFO&, const LONGLONG&);
 	HRESULT DisplayFrame();
 	void ClearPresentation(){ m_dqPicturePresentation.clear(); }
 	DWORD PictureToDisplayCount() const{ return m_dqPicturePresentation.size(); }
@@ -69,6 +69,7 @@ private:
 		INT TopFieldOrderCnt;
 		DWORD dwDXVA2Index;
 		SLICE_TYPE SliceType;
+		LONGLONG llTime;
 	};
 
 	deque<POC> m_dqPoc;
@@ -82,7 +83,8 @@ private:
 	void InitPictureParams(const DWORD, const PICTURE_INFO&);
 	void InitQuantaMatrixParams(const SPS_DATA&);
 	HRESULT AddNalUnitBufferPadding(CMFBuffer&, const UINT);
-	void HandlePOC(const DWORD, const PICTURE_INFO&);
+	void HandlePOC(const DWORD, const PICTURE_INFO&, const LONGLONG&);
+	void ErasePastFrames(const LONGLONG&);
 
 	// Dxva2Decoder_DisplayFrame.cpp
 	HRESULT RenderFrame();

@@ -34,6 +34,7 @@ HRESULT CDxva2Decoder::RenderFrame(){
 	DXVAHD_STREAM_DATA stream_data;
 	DWORD dwSurfaceIndex = 0;
 	BOOL bHasPicture = FALSE;
+	LONGLONG llTime = 0;
 	ZeroMemory(&stream_data, sizeof(DXVAHD_STREAM_DATA));
 
 	assert(m_pDXVAVP);
@@ -44,6 +45,7 @@ HRESULT CDxva2Decoder::RenderFrame(){
 
 			dwSurfaceIndex = it->dwDXVA2Index;
 			m_iPrevTopFieldOrderCount = it->TopFieldOrderCnt;
+			llTime = it->llTime;
 			m_dqPicturePresentation.erase(it);
 			bHasPicture = TRUE;
 			break;
@@ -56,6 +58,9 @@ HRESULT CDxva2Decoder::RenderFrame(){
 	if(bHasPicture == FALSE){
 		return hr;
 	}
+
+	// Check past frames, sometimes needed...
+	ErasePastFrames(llTime);
 
 	m_dwPicturePresent++;
 

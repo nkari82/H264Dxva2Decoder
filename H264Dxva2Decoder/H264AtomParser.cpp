@@ -105,7 +105,7 @@ void CH264AtomParser::Delete(){
 	m_iNaluLenghtSize = 0;
 }
 
-HRESULT CH264AtomParser::GetNextSample(const DWORD dwTrackId, BYTE** ppData, DWORD* pSize){
+HRESULT CH264AtomParser::GetNextSample(const DWORD dwTrackId, BYTE** ppData, DWORD* pSize, LONGLONG* pllTime){
 
 	HRESULT hr;
 	DWORD dwRead;
@@ -153,6 +153,7 @@ HRESULT CH264AtomParser::GetNextSample(const DWORD dwTrackId, BYTE** ppData, DWO
 
 		*ppData = m_cMp4ParserBuffer.GetStartBuffer();
 		*pSize = m_cMp4ParserBuffer.GetBufferSize();
+		*pllTime = (*vSamples)[m_dwCurrentSample].llTime + (*vSamples)[m_dwCurrentSample].llDuration;
 		m_dwCurrentSample++;
 	}
 	else{
@@ -329,6 +330,9 @@ HRESULT CH264AtomParser::FinalizeSampleOffset(TRACK_INFO& TrackInfo){
 	DWORD dwPrevSize = 0;
 
 	IF_FAILED_RETURN(TrackInfo.vSamples.size() == 0 || TrackInfo.vChunks.size() == 0 || TrackInfo.vChunkOffset.size() == 0 ? E_FAIL : S_OK);
+
+	// todo : fixed sample size (for video, should not happen)
+	IF_FAILED_RETURN(TrackInfo.dwFixedSampleSize == 0 ? S_OK : E_FAIL);
 
 	vector<CHUNCK_INFO>::const_iterator itChunk = TrackInfo.vChunks.begin();
 	vector<DWORD>::const_iterator itChunkOffset = TrackInfo.vChunkOffset.begin();
@@ -946,7 +950,7 @@ HRESULT CH264AtomParser::ParseSampleTableHeader(TRACK_INFO& TrackInfo, BYTE* pDa
 				break;
 
 			case ATOM_TYPE_STSZ:
-				IF_FAILED_RETURN(ParseSampleSizeHeader(TrackInfo.vSamples, pData + ATOM_MIN_SIZE_HEADER, dwAtomSize - ATOM_MIN_SIZE_HEADER));
+				IF_FAILED_RETURN(ParseSampleSizeHeader(TrackInfo.vSamples, &TrackInfo.dwFixedSampleSize, pData + ATOM_MIN_SIZE_HEADER, dwAtomSize - ATOM_MIN_SIZE_HEADER));
 				break;
 
 			case ATOM_TYPE_STCO:
@@ -957,7 +961,8 @@ HRESULT CH264AtomParser::ParseSampleTableHeader(TRACK_INFO& TrackInfo, BYTE* pDa
 				IF_FAILED_RETURN(ParseChunckOffset64Header(TrackInfo.vChunkOffset, pData + ATOM_MIN_SIZE_HEADER, dwAtomSize - ATOM_MIN_SIZE_HEADER));
 				break;
 
-			case ATOM_TYPE_SDTP:
+			case ATOM_TYPE_SDTP:// todo
+			case ATOM_TYPE_STPS:// todo
 			case ATOM_TYPE_FREE:
 			case ATOM_TYPE_SBGP:
 			case ATOM_TYPE_SGPD:
@@ -977,14 +982,18 @@ HRESULT CH264AtomParser::ParseSampleDescHeader(TRACK_INFO& TrackInfo, BYTE* pDat
 
 	DWORD dwAtomSize;
 	DWORD dwAtomType;
+	DWORD dwAtomCount;
 	DWORD dwByteDone = ATOM_MIN_SIZE_HEADER;
 
 	IF_FAILED_RETURN(dwByteDone < dwAtomSampleDescSize ? S_OK : E_FAIL);
 
 	pData += 4;
 
+	dwAtomCount = MAKE_DWORD(pData);
+
 	// todo : if more than one STSD. For now just get the first
-	//IF_FAILED_RETURN(MAKE_DWORD(pData) == 1 ? S_OK : E_FAIL);
+	if(dwAtomCount > 1)
+		TRACE((L"error : dwAtomCount = %u", dwAtomCount));
 
 	pData += 4;
 
@@ -1012,6 +1021,7 @@ HRESULT CH264AtomParser::ParseSampleDescHeader(TRACK_INFO& TrackInfo, BYTE* pDat
 		}
 
 		dwByteDone += dwAtomSize;
+		pData += dwAtomSize;
 
 		// todo : if more than one STSD. For now just get the first
 		break;
@@ -1142,7 +1152,7 @@ HRESULT CH264AtomParser::ParseSampleChunckHeader(vector<CHUNCK_INFO>& vChunks, B
 	return hr;
 }
 
-HRESULT CH264AtomParser::ParseSampleSizeHeader(vector<SAMPLE_INFO>& vSamples, BYTE* pData, const DWORD dwAtomSampleSize){
+HRESULT CH264AtomParser::ParseSampleSizeHeader(vector<SAMPLE_INFO>& vSamples, DWORD* pdwFixedSampleSize, BYTE* pData, const DWORD dwAtomSampleSize){
 
 	HRESULT hr;
 
@@ -1155,15 +1165,9 @@ HRESULT CH264AtomParser::ParseSampleSizeHeader(vector<SAMPLE_INFO>& vSamples, BY
 	pData += 4;
 	dwSampleSize = MAKE_DWORD(pData);
 
-	// Todo : if not 0, all samples same size
-	//IF_FAILED_RETURN(dwSampleSize == 0 ? S_OK : E_FAIL);
 	if(dwSampleSize != 0){
 
-		// todo
-		// Fixed samples size
-		/*pData += 4;
-		DWORD dwNumSample = MAKE_DWORD(pData);*/
-
+		*pdwFixedSampleSize = dwSampleSize;
 		return hr;
 	}
 
@@ -1243,39 +1247,37 @@ HRESULT CH264AtomParser::ParseChunckOffset64Header(vector<DWORD>& vChunkOffset, 
 
 HRESULT CH264AtomParser::ParseAvc1Format(CMFLightBuffer** ppConfig, const BYTE* pData, const DWORD dwAvc1AtomSize){
 
-	HRESULT hr;
+	HRESULT hr = S_OK;
+	DWORD dwAtomSize;
+	DWORD dwAtomType;
 	DWORD dwByteDone = 86;
 	pData += 86;
 
-	IF_FAILED_RETURN(dwAvc1AtomSize - dwByteDone >= ATOM_MIN_SIZE_HEADER ? S_OK : E_FAIL);
-
-	DWORD dwAtomSize = MAKE_DWORD(pData);
-	DWORD dwAtomType = MAKE_DWORD(pData + 4);
-
-	// Rarely, ATOM_TYPE_AVCC is not the first : we should loop to find ATOM_TYPE_AVCC
-	if(dwAtomType != ATOM_TYPE_AVCC){
-
-		// todo : usually pasp atom
-		dwByteDone += dwAtomSize;
-		pData += dwAtomSize;
-		IF_FAILED_RETURN(dwByteDone <= dwAvc1AtomSize ? S_OK : E_FAIL);
+	while(dwAvc1AtomSize - dwByteDone >= ATOM_MIN_SIZE_HEADER){
 
 		dwAtomSize = MAKE_DWORD(pData);
 		dwAtomType = MAKE_DWORD(pData + 4);
+
+		// Todo
+		assert(dwAtomSize != 0 && dwAtomSize != 1);
+
+		switch(dwAtomType){
+
+			case ATOM_TYPE_AVCC:
+				IF_FAILED_RETURN(ParseVideoConfigDescriptor(ppConfig, pData + 8, dwAtomSize - 8));
+				break;
+
+			case ATOM_TYPE_PASP:
+			case ATOM_TYPE_BTRT:
+			case ATOM_TYPE_COLR:
+			case ATOM_TYPE_GAMA:
+			case ATOM_TYPE_UUID:
+				break;
+		}
+
+		dwByteDone += dwAtomSize;
+		pData += dwAtomSize;
 	}
-
-	IF_FAILED_RETURN(dwAtomType == ATOM_TYPE_AVCC ? S_OK : E_FAIL);
-
-	dwByteDone += dwAtomSize;
-
-	IF_FAILED_RETURN(dwByteDone <= dwAvc1AtomSize ? S_OK : E_FAIL);
-
-	// we must check pData does not exceed dwAtomSampleDescSize
-	pData += 8;
-
-	IF_FAILED_RETURN(ParseVideoConfigDescriptor(ppConfig, pData, dwAtomSize - 8));
-
-	// todo : check size to see if other atom
 
 	return hr;
 }

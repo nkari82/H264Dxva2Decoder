@@ -212,7 +212,7 @@ void CDxva2Decoder::OnRelease(){
 	}
 }
 
-HRESULT CDxva2Decoder::DecodeFrame(CMFBuffer& cMFNaluBuffer, const PICTURE_INFO& Picture){
+HRESULT CDxva2Decoder::DecodeFrame(CMFBuffer& cMFNaluBuffer, const PICTURE_INFO& Picture, const LONGLONG& llTime){
 
 	HRESULT hr = S_OK;
 	IDirect3DDevice9* pDevice = NULL;
@@ -242,6 +242,7 @@ HRESULT CDxva2Decoder::DecodeFrame(CMFBuffer& cMFNaluBuffer, const PICTURE_INFO&
 
 		// Picture
 		InitPictureParams(m_dwCurPictureId, Picture);
+		HandlePOC(m_dwCurPictureId, Picture, llTime);
 		IF_FAILED_THROW(m_pVideoDecoder->GetBuffer(DXVA2_PictureParametersBufferType, &pBuffer, &uiSize));
 		assert(sizeof(DXVA_PicParams_H264) <= uiSize);
 		memcpy(pBuffer, &m_H264PictureParams, sizeof(DXVA_PicParams_H264));
@@ -496,8 +497,6 @@ void CDxva2Decoder::InitPictureParams(const DWORD dwIndex, const PICTURE_INFO& P
 	if(dwStatusReportFeedbackNumber == ULONG_MAX){
 		dwStatusReportFeedbackNumber = 1;
 	}
-
-	HandlePOC(dwIndex, Picture);
 }
 
 void CDxva2Decoder::InitQuantaMatrixParams(const SPS_DATA& sps){
@@ -526,7 +525,7 @@ HRESULT CDxva2Decoder::AddNalUnitBufferPadding(CMFBuffer& cMFNaluBuffer, const U
 	return hr;
 }
 
-void CDxva2Decoder::HandlePOC(const DWORD dwIndex, const PICTURE_INFO& Picture){
+void CDxva2Decoder::HandlePOC(const DWORD dwIndex, const PICTURE_INFO& Picture, const LONGLONG& llTime){
 
 	if(Picture.btNalRefIdc && Picture.slice.PicMarking.adaptive_ref_pic_marking_mode_flag == FALSE && m_dqPoc.size() >= Picture.sps.num_ref_frames){
 
@@ -550,6 +549,8 @@ void CDxva2Decoder::HandlePOC(const DWORD dwIndex, const PICTURE_INFO& Picture){
 	pp.TopFieldOrderCnt = Picture.slice.TopFieldOrderCnt;
 	pp.dwDXVA2Index = dwIndex;
 	pp.SliceType = (SLICE_TYPE)Picture.slice.slice_type;
+	pp.llTime = llTime;
+
 	if(Picture.slice.TopFieldOrderCnt != 0)
 		m_dqPicturePresentation.push_front(pp);
 	else
@@ -591,5 +592,16 @@ void CDxva2Decoder::HandlePOC(const DWORD dwIndex, const PICTURE_INFO& Picture){
 				}
 			}
 		}
+	}
+}
+
+void CDxva2Decoder::ErasePastFrames(const LONGLONG& llTime){
+
+	for(deque<PICTURE_PRESENTATION>::const_iterator it = m_dqPicturePresentation.begin(); it != m_dqPicturePresentation.end();){
+
+		if(it->llTime <= llTime)
+			it = m_dqPicturePresentation.erase(it);
+		else
+			++it;
 	}
 }
