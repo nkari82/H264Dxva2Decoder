@@ -493,7 +493,7 @@ HRESULT CH264AtomParser::ParseAtoms(ROOT_ATOM& sRootAtom){
 				IF_FAILED_RETURN(m_pByteStream->Seek(-ATOM_MIN_SIZE_HEADER));
 				IF_FAILED_RETURN(ParseMoov(dwAtomSize - ATOM_MIN_SIZE_HEADER));
 				sRootAtom.bMOOV = TRUE;
-				// Seek is already done in ReadMoov, so continue
+				// Seek is already done in ParseMoov, so continue
 				continue;
 
 			case ATOM_TYPE_MDAT:
@@ -1017,6 +1017,7 @@ HRESULT CH264AtomParser::ParseSampleDescHeader(TRACK_INFO& TrackInfo, BYTE* pDat
 			case ATOM_TYPE_MP4S:
 			case ATOM_TYPE_AC_3:
 			case ATOM_TYPE_RTP_:
+			case ATOM_TYPE_EC_3:
 				break;
 		}
 

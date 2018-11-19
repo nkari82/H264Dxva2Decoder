@@ -40,7 +40,7 @@ HRESULT CMFByteStream::QueryInterface(REFIID riid, void** ppv){
 
 	static const QITAB qit[] = {
 		QITABENT(CMFByteStream, IMFAsyncCallback),
-	{0}
+		{0}
 	};
 
 	return QISearch(this, qit, riid, ppv);
@@ -287,7 +287,7 @@ HRESULT CMFByteStream::Seek(const LONG lDistance){
 
 	DWORD dwPosition = SetFilePointer(m_hFile, lDistance, NULL, FILE_CURRENT);
 
-	IF_FAILED_RETURN(dwPosition == INVALID_SET_FILE_POINTER ? E_FAIL : S_OK);
+	IF_FAILED_RETURN(dwPosition == INVALID_SET_FILE_POINTER || GetLastError() != NO_ERROR ? E_FAIL : S_OK);
 
 	return hr;
 }
@@ -321,7 +321,7 @@ HRESULT CMFByteStream::SeekEnd(const LONG lDistance){
 
 	DWORD dwPosition = SetFilePointer(m_hFile, -lDistance, NULL, FILE_END);
 
-	IF_FAILED_RETURN(dwPosition == INVALID_SET_FILE_POINTER ? E_FAIL : S_OK);
+	IF_FAILED_RETURN(dwPosition == INVALID_SET_FILE_POINTER || GetLastError() != NO_ERROR ? E_FAIL : S_OK);
 
 	return hr;
 }
@@ -338,7 +338,7 @@ HRESULT CMFByteStream::Reset(){
 
 	DWORD dwPosition = SetFilePointer(m_hFile, 0, NULL, FILE_BEGIN);
 
-	IF_FAILED_RETURN(dwPosition == INVALID_SET_FILE_POINTER ? E_FAIL : S_OK);
+	IF_FAILED_RETURN(dwPosition == INVALID_SET_FILE_POINTER || GetLastError() != NO_ERROR ? E_FAIL : S_OK);
 
 	return hr;
 }
