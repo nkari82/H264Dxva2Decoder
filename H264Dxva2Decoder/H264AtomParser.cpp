@@ -504,6 +504,7 @@ HRESULT CH264AtomParser::ParseAtoms(ROOT_ATOM& sRootAtom){
 			case ATOM_TYPE_FREE:
 			case ATOM_TYPE_UUID:
 			case ATOM_TYPE_WIDE:
+			case ATOM_TYPE_SKIP:
 				break;
 		}
 
@@ -563,6 +564,7 @@ HRESULT CH264AtomParser::ParseMoov(const DWORD dwAtomMoovSize){
 			case ATOM_TYPE_IODS:
 			case ATOM_TYPE_FREE:
 			case ATOM_TYPE_UUID:
+			case ATOM_TYPE_META:
 				break;
 		}
 
@@ -607,6 +609,8 @@ HRESULT CH264AtomParser::ParseTrack(TRACK_INFO& TrackInfo, BYTE* pData, const DW
 			case ATOM_TYPE_UDTA:
 			case ATOM_TYPE_TREF:
 			case ATOM_TYPE_UUID:
+			case ATOM_TYPE_TAPT:
+			case ATOM_TYPE_FREE:
 				break;
 		}
 
@@ -982,14 +986,15 @@ HRESULT CH264AtomParser::ParseSampleDescHeader(TRACK_INFO& TrackInfo, BYTE* pDat
 
 	DWORD dwAtomSize;
 	DWORD dwAtomType;
-	DWORD dwAtomCount;
 	DWORD dwByteDone = ATOM_MIN_SIZE_HEADER;
 
-	IF_FAILED_RETURN(dwByteDone < dwAtomSampleDescSize ? S_OK : E_FAIL);
+	IF_FAILED_RETURN(dwByteDone <= dwAtomSampleDescSize ? S_OK : E_FAIL);
 
 	pData += 4;
+	const DWORD dwAtomCount = MAKE_DWORD(pData);
 
-	dwAtomCount = MAKE_DWORD(pData);
+	if(dwAtomCount == 0)
+		return hr;
 
 	// todo : if more than one STSD. For now just get the first
 	if(dwAtomCount > 1)
@@ -1018,6 +1023,12 @@ HRESULT CH264AtomParser::ParseSampleDescHeader(TRACK_INFO& TrackInfo, BYTE* pDat
 			case ATOM_TYPE_AC_3:
 			case ATOM_TYPE_RTP_:
 			case ATOM_TYPE_EC_3:
+			case ATOM_TYPE_RAW_:
+			case ATOM_TYPE_TX3G:
+			case ATOM_TYPE_C608:
+			case ATOM_TYPE_TCMD:
+			case ATOM_TYPE_DIVX:
+			case ATOM_TYPE__MP3:
 				break;
 		}
 
@@ -1037,10 +1048,13 @@ HRESULT CH264AtomParser::ParseSampleTimeHeader(vector<TIME_INFO>& vTimeSample, B
 
 	const DWORD dwByteDone = ATOM_MIN_SIZE_HEADER;
 
-	IF_FAILED_RETURN(dwByteDone < dwAtomSampleTimeSize ? S_OK : E_FAIL);
+	IF_FAILED_RETURN(dwByteDone <= dwAtomSampleTimeSize ? S_OK : E_FAIL);
 
 	pData += 4;
 	const DWORD dwTimeSamples = MAKE_DWORD(pData);
+
+	if(dwTimeSamples == 0)
+		return hr;
 
 	IF_FAILED_RETURN((dwTimeSamples > 0) && ((dwTimeSamples * 8) == (dwAtomSampleTimeSize - dwByteDone)) ? S_OK : E_FAIL);
 
@@ -1095,10 +1109,13 @@ HRESULT CH264AtomParser::ParseCompositionOffsetHeader(vector<TIME_INFO>& vCompos
 
 	const DWORD dwByteDone = ATOM_MIN_SIZE_HEADER;
 
-	IF_FAILED_RETURN(dwByteDone < dwAtomCompositionOffsetSize ? S_OK : E_FAIL);
+	IF_FAILED_RETURN(dwByteDone <= dwAtomCompositionOffsetSize ? S_OK : E_FAIL);
 
 	pData += 4;
 	const DWORD dwCompositionOffsetCount = MAKE_DWORD(pData);
+
+	if(dwCompositionOffsetCount == 0)
+		return hr;
 
 	IF_FAILED_RETURN((dwCompositionOffsetCount > 0) && ((dwCompositionOffsetCount * 8) == (dwAtomCompositionOffsetSize - dwByteDone)) ? S_OK : E_FAIL);
 
@@ -1125,10 +1142,13 @@ HRESULT CH264AtomParser::ParseSampleChunckHeader(vector<CHUNCK_INFO>& vChunks, B
 
 	const DWORD dwByteDone = ATOM_MIN_SIZE_HEADER;
 
-	IF_FAILED_RETURN(dwByteDone < dwAtomSampleChunckSize ? S_OK : E_FAIL);
+	IF_FAILED_RETURN(dwByteDone <= dwAtomSampleChunckSize ? S_OK : E_FAIL);
 
 	pData += 4;
 	const DWORD dwSampleChunckSize = MAKE_DWORD(pData);
+
+	if(dwSampleChunckSize == 0)
+		return hr;
 
 	IF_FAILED_RETURN((dwSampleChunckSize > 0) && ((dwSampleChunckSize * 12) <= (dwAtomSampleChunckSize - dwByteDone)) ? S_OK : E_FAIL);
 
@@ -1175,6 +1195,9 @@ HRESULT CH264AtomParser::ParseSampleSizeHeader(vector<SAMPLE_INFO>& vSamples, DW
 	pData += 4;
 	dwSampleSize = MAKE_DWORD(pData);
 
+	if(dwSampleSize == 0)
+		return hr;
+
 	IF_FAILED_RETURN((dwSampleSize > 0) && ((dwSampleSize * 4) <= (dwAtomSampleSize - dwByteDone)) ? S_OK : E_FAIL);
 
 	pData += 4;
@@ -1202,8 +1225,10 @@ HRESULT CH264AtomParser::ParseChunckOffsetHeader(vector<DWORD>& vChunkOffset, BY
 	IF_FAILED_RETURN(dwByteDone <= dwAtomChunckOffsetSize ? S_OK : E_FAIL);
 
 	pData += 4;
-
 	const DWORD dwChuncks = MAKE_DWORD(pData);
+
+	if(dwChuncks == 0)
+		return hr;
 
 	IF_FAILED_RETURN((dwChuncks * 4) <= (dwAtomChunckOffsetSize - dwByteDone) ? S_OK : E_FAIL);
 
@@ -1227,8 +1252,10 @@ HRESULT CH264AtomParser::ParseChunckOffset64Header(vector<DWORD>& vChunkOffset, 
 	IF_FAILED_RETURN(dwByteDone <= dwAtomChunckOffsetSize ? S_OK : E_FAIL);
 
 	pData += 4;
-
 	const DWORD dwChuncks = MAKE_DWORD(pData);
+
+	if(dwChuncks == 0)
+		return hr;
 
 	IF_FAILED_RETURN((dwChuncks * 8) <= (dwAtomChunckOffsetSize - dwByteDone) ? S_OK : E_FAIL);
 
