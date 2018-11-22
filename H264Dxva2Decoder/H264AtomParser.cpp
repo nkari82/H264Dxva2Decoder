@@ -970,6 +970,7 @@ HRESULT CH264AtomParser::ParseSampleTableHeader(TRACK_INFO& TrackInfo, BYTE* pDa
 			case ATOM_TYPE_FREE:
 			case ATOM_TYPE_SBGP:
 			case ATOM_TYPE_SGPD:
+			case ATOM_TYPE_CSLG:
 				break;
 		}
 
