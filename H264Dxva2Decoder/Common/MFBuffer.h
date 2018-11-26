@@ -27,6 +27,7 @@ public:
 	BYTE* GetStartBuffer(){ return m_pBuffer + m_dwStartPosition; }
 	DWORD GetBufferSize() const{ assert(m_dwEndPosition >= m_dwStartPosition); return (m_dwEndPosition - m_dwStartPosition); }
 	DWORD GetAllocatedSize() const{ return m_dwTotalSize; }
+	void SetStartPositionAtBeginning(){ m_dwStartPosition = 0; }
 
 private:
 
