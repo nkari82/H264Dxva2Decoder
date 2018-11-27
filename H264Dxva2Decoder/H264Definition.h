@@ -4,13 +4,11 @@
 #ifndef H264DEFINITION_H
 #define H264DEFINITION_H
 
-#define MAX_SPS_COUNT      32
-#define MAX_PPS_COUNT      256
-#define MAX_SLICEGROUP_IDS 8
-#define MAX_REF_PIC_COUNT  16
-
-// This is for mpeg2, check for h264
-#define MAX_SLICE	175 // (1 to 175 : 0x00000001 to 0x000001AF)
+#define MAX_SPS_COUNT		32
+#define MAX_PPS_COUNT		256
+#define MAX_SLICEGROUP_IDS	8
+#define MAX_REF_PIC_COUNT	16
+#define MAX_SUB_SLICE		32
 
 enum NAL_UNIT_TYPE{
 
@@ -51,6 +49,7 @@ enum NAL_UNIT_TYPE{
 enum PROFILE_IDC{
 
 	PROFILE_UNKNOWN = 0,
+	PROFILE_CAVLC444 = 44,
 	PROFILE_BASELINE = 66,
 	PROFILE_MAIN = 77,
 	PROFILE_SCALABLE_BASELINE = 83,
@@ -61,13 +60,11 @@ enum PROFILE_IDC{
 	PROFILE_MULTI_VIEW_HIGH = 118,
 	PROFILE_HIGH422 = 122,
 	PROFILE_STEREO_HIGH = 128,
+	PROFILE_134 = 134,
+	PROFILE_135 = 135,
 	PROFILE_MULTI_DEPTH_VIEW_HIGH = 138,
-	PROFILE_HIGH444 = 144,
-	PROFILE_CAVLC444 = 244,
-	PROFILE_CONSTRAINED_BASE = 256,
-	PROFILE_CONSTRAINED_HIGH = 257,
-	PROFILE_CONSTRAINED_SCALABLE_BASE = 258,
-	PROFILE_CONSTRAINED_SCALABLE_HIGH = 259,
+	PROFILE_139 = 139,
+	PROFILE_HIGH444PP = 244
 };
 
 enum LEVEL_IDC{
@@ -237,7 +234,7 @@ struct SPS_DATA{
 	LEVEL_IDC level_idc;
 	DWORD seq_parameter_set_id;
 	DWORD chroma_format_idc;
-	BOOL residual_colour_transform_flag;
+	BOOL separate_colour_plane_flag;
 	DWORD bit_depth_luma_minus8;
 	DWORD bit_depth_chroma_minus8;
 	BOOL qpprime_y_zero_transform_bypass_flag;
@@ -272,7 +269,7 @@ struct PPS_DATA{
 	DWORD pic_parameter_set_id;
 	DWORD seq_parameter_set_id;
 	BOOL entropy_coding_mode_flag;
-	BOOL pic_order_present_flag;
+	BOOL bottom_field_pic_order_in_frame_present_flag;
 	DWORD num_slice_groups_minus1;
 	DWORD num_ref_idx_l0_active_minus1;
 	DWORD num_ref_idx_l1_active_minus1;

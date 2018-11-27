@@ -12,7 +12,7 @@ public:
 	~CH264NaluParser(){}
 
 	HRESULT ParseVideoConfigDescriptor(const BYTE*, const DWORD);
-	HRESULT ParseNaluHeader(CMFBuffer&);
+	HRESULT ParseNaluHeader(CMFBuffer&, DWORD*);
 
 	const BOOL IsNalUnitCodedSlice() const{ return (m_Picture.NalUnitType == NAL_UNIT_CODED_SLICE || m_Picture.NalUnitType == NAL_UNIT_CODED_SLICE_IDR); }
 	const SPS_DATA& GetSPS() const { return m_Picture.sps; }

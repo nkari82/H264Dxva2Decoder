@@ -36,8 +36,8 @@ HRESULT ProcessDecode(){
 	CH264AtomParser* pH264AtomParser = NULL;
 	CDxva2Decoder* pDxva2Decoder = NULL;
 	CH264NaluParser cH264NaluParser;
-	CMFBuffer pVideoBuffer;
-	CMFBuffer pNalUnitBuffer;
+	CMFBuffer VideoBuffer;
+	CMFBuffer NalUnitBuffer;
 	BYTE* pVideoData = NULL;
 	DWORD dwBufferSize;
 	DWORD dwTotalSample = 0;
@@ -47,6 +47,10 @@ HRESULT ProcessDecode(){
 	DWORD dwTrackId = 0;
 	LONGLONG llTime = 0;
 	BYTE btStartCode[4] = {0x00, 0x00, 0x00, 0x01};
+	int iSubSliceCount;
+	DWORD dwParsed;
+
+	const DWORD H264_BUFFER_SIZE = 262144;
 
 	try{
 
@@ -72,8 +76,8 @@ HRESULT ProcessDecode(){
 		IF_FAILED_THROW(pH264AtomParser->GetVideoFrameRate(dwTrackId, &Dxva2Freq.Numerator, &Dxva2Freq.Denominator));
 		IF_FAILED_THROW(pDxva2Decoder->InitDXVA2(cH264NaluParser.GetSPS(), cH264NaluParser.GetWidth(), cH264NaluParser.GetHeight(), Dxva2Freq.Numerator, Dxva2Freq.Denominator));
 
-		IF_FAILED_THROW(pVideoBuffer.Initialize(H264_BUFFER_SIZE));
-		IF_FAILED_THROW(pNalUnitBuffer.Initialize(H264_BUFFER_SIZE));
+		IF_FAILED_THROW(VideoBuffer.Initialize(H264_BUFFER_SIZE));
+		IF_FAILED_THROW(NalUnitBuffer.Initialize(H264_BUFFER_SIZE));
 
 		while(pH264AtomParser->GetNextSample(dwTrackId, &pVideoData, &dwBufferSize, &llTime) == S_OK){
 
@@ -84,35 +88,58 @@ HRESULT ProcessDecode(){
 				break;
 			}
 
-			IF_FAILED_THROW(pVideoBuffer.Reserve(dwBufferSize));
-			memcpy(pVideoBuffer.GetReadStartBuffer(), pVideoData, dwBufferSize);
-			IF_FAILED_THROW(pVideoBuffer.SetEndPosition(dwBufferSize));
+			IF_FAILED_THROW(VideoBuffer.Reserve(dwBufferSize));
+			memcpy(VideoBuffer.GetStartBuffer(), pVideoData, dwBufferSize);
+			IF_FAILED_THROW(VideoBuffer.SetEndPosition(dwBufferSize));
+
+			NalUnitBuffer.Reset();
+			iSubSliceCount = 0;
 
 			dwTotalSample++;
 
 			do{
 
-				pNalUnitBuffer.Reset();
-				IF_FAILED_THROW(pNalUnitBuffer.Reserve(pVideoBuffer.GetBufferSize()));
-				memcpy(pNalUnitBuffer.GetStartBuffer(), pVideoBuffer.GetStartBuffer(), pVideoBuffer.GetBufferSize());
-				IF_FAILED_THROW(pNalUnitBuffer.SetEndPosition(pVideoBuffer.GetBufferSize()));
+				if(iSubSliceCount == 0){
 
-				IF_FAILED_THROW(cH264NaluParser.ParseNaluHeader(pVideoBuffer));
+					IF_FAILED_THROW(NalUnitBuffer.Reserve(VideoBuffer.GetBufferSize()));
+					memcpy(NalUnitBuffer.GetStartBuffer(), VideoBuffer.GetStartBuffer(), VideoBuffer.GetBufferSize());
+					IF_FAILED_THROW(NalUnitBuffer.SetEndPosition(VideoBuffer.GetBufferSize()));
+				}
+
+				IF_FAILED_THROW(cH264NaluParser.ParseNaluHeader(VideoBuffer, &dwParsed));
 
 				if(cH264NaluParser.IsNalUnitCodedSlice()){
 
+					iSubSliceCount++;
 					dwTotalPicture++;
 
 					// DXVA2 needs start code
 					if(iNaluLenghtSize == 4){
-						memcpy(pNalUnitBuffer.GetStartBuffer(), btStartCode, 4);
+						memcpy(NalUnitBuffer.GetStartBuffer(), btStartCode, 4);
 					}
 					else{
-						IF_FAILED_THROW(AddByteAndConvertAvccToAnnexB(pNalUnitBuffer));
+						IF_FAILED_THROW(AddByteAndConvertAvccToAnnexB(NalUnitBuffer));
 					}
 
-					IF_FAILED_THROW(pDxva2Decoder->DecodeFrame(pNalUnitBuffer, cH264NaluParser.GetPicture(), llTime));
-					IF_FAILED_THROW(pDxva2Decoder->DisplayFrame());
+					IF_FAILED_THROW(pDxva2Decoder->AddSliceShortInfo(iSubSliceCount, dwParsed));
+
+					if(VideoBuffer.GetBufferSize() == 0){
+
+						NalUnitBuffer.SetStartPositionAtBeginning();
+						IF_FAILED_THROW(pDxva2Decoder->DecodeFrame(NalUnitBuffer, cH264NaluParser.GetPicture(), llTime, iSubSliceCount));
+						IF_FAILED_THROW(pDxva2Decoder->DisplayFrame());
+					}
+					else{
+
+						// Sub-slices
+						IF_FAILED_THROW(NalUnitBuffer.SetStartPosition(dwParsed));
+					}
+				}
+				else{
+
+					// We assume sub-slices are contiguous
+					assert(iSubSliceCount == 0);
+					NalUnitBuffer.Reset();
 				}
 
 				if(hr == S_FALSE){
@@ -121,9 +148,9 @@ HRESULT ProcessDecode(){
 					pDxva2Decoder->ClearPresentation();
 					hr = S_OK;
 				}
-				else if(pVideoBuffer.GetBufferSize() != 0){
+				else if(VideoBuffer.GetBufferSize() != 0){
 
-					// Some slices contain SEI message and IFrame, continue parsing
+					// Some slice contains SEI message and sub-slices, continue parsing
 					hr = S_FALSE;
 				}
 			}
@@ -149,10 +176,10 @@ HRESULT ProcessDecode(){
 	// if(pVideoBuffer.GetAllocatedSize == H264_BUFFER_SIZE and pNalUnitBuffer.GetBufferSize == H264_BUFFER_SIZE), no memory allocation, but perhaps, we reserved too much memory
 	// H264_BUFFER_SIZE : value arbitrary choosen after testing few files
 	TRACE((L"\r\nTotal sample = %lu - Total picture = %lu - Total video buffer Size = %lu (%lu) - Total nalunit buffer Size = %lu (%lu) - Max sample size = %lu\r\n",
-		dwTotalSample, dwTotalPicture, pVideoBuffer.GetAllocatedSize(), H264_BUFFER_SIZE, pNalUnitBuffer.GetAllocatedSize(), H264_BUFFER_SIZE, dwMaxSampleBufferSize));
+		dwTotalSample, dwTotalPicture, VideoBuffer.GetAllocatedSize(), H264_BUFFER_SIZE, NalUnitBuffer.GetAllocatedSize(), H264_BUFFER_SIZE, dwMaxSampleBufferSize));
 
-	pVideoBuffer.Delete();
-	pNalUnitBuffer.Delete();
+	VideoBuffer.Delete();
+	NalUnitBuffer.Delete();
 	SAFE_DELETE(pDxva2Decoder);
 	SAFE_DELETE(pH264AtomParser);
 

@@ -33,7 +33,7 @@ CDxva2Decoder::CDxva2Decoder(){
 	memset(m_BufferDesc, 0, 4 * sizeof(DXVA2_DecodeBufferDesc));
 	memset(&m_H264PictureParams, 0, sizeof(DXVA_PicParams_H264));
 	memset(&m_H264QuantaMatrix, 0, sizeof(DXVA_Qmatrix_H264));
-	memset(m_H264SliceInfo, 0, MAX_SLICE * sizeof(DXVA_Slice_H264_Short));
+	memset(m_H264SliceShort, 0, MAX_SUB_SLICE * sizeof(DXVA_Slice_H264_Short));
 
 	m_hInst = NULL;
 	m_hWnd = NULL;
@@ -165,7 +165,7 @@ void CDxva2Decoder::OnRelease(){
 	memset(m_BufferDesc, 0, 4 * sizeof(DXVA2_DecodeBufferDesc));
 	memset(&m_H264PictureParams, 0, sizeof(DXVA_PicParams_H264));
 	memset(&m_H264QuantaMatrix, 0, sizeof(DXVA_Qmatrix_H264));
-	memset(m_H264SliceInfo, 0, MAX_SLICE * sizeof(DXVA_Slice_H264_Short));
+	memset(m_H264SliceShort, 0, MAX_SUB_SLICE * sizeof(DXVA_Slice_H264_Short));
 
 	m_dwCurPictureId = 0;
 	m_iPrevTopFieldOrderCount = 0;
@@ -212,7 +212,7 @@ void CDxva2Decoder::OnRelease(){
 	}
 }
 
-HRESULT CDxva2Decoder::DecodeFrame(CMFBuffer& cMFNaluBuffer, const PICTURE_INFO& Picture, const LONGLONG& llTime){
+HRESULT CDxva2Decoder::DecodeFrame(CMFBuffer& cMFNaluBuffer, const PICTURE_INFO& Picture, const LONGLONG& llTime, const int iSubSliceCount){
 
 	HRESULT hr = S_OK;
 	IDirect3DDevice9* pDevice = NULL;
@@ -256,6 +256,7 @@ HRESULT CDxva2Decoder::DecodeFrame(CMFBuffer& cMFNaluBuffer, const PICTURE_INFO&
 
 		// BitStream
 		IF_FAILED_THROW(m_pVideoDecoder->GetBuffer(DXVA2_BitStreamDateBufferType, &pBuffer, &uiSize));
+		// todo : if iSubSliceCount > 1, perhaps we need to do AddNalUnitBufferPadding for each sub-slices
 		IF_FAILED_THROW(AddNalUnitBufferPadding(cMFNaluBuffer, uiSize));
 		assert(cMFNaluBuffer.GetBufferSize() <= uiSize);
 		memcpy(pBuffer, cMFNaluBuffer.GetStartBuffer(), cMFNaluBuffer.GetBufferSize());
@@ -263,10 +264,8 @@ HRESULT CDxva2Decoder::DecodeFrame(CMFBuffer& cMFNaluBuffer, const PICTURE_INFO&
 
 		// Slices
 		IF_FAILED_THROW(m_pVideoDecoder->GetBuffer(DXVA2_SliceControlBufferType, &pBuffer, &uiSize));
-		assert(sizeof(DXVA_Slice_H264_Short) <= uiSize);
-		DXVA_Slice_H264_Short SliceH264Short = {0};
-		SliceH264Short.SliceBytesInBuffer = cMFNaluBuffer.GetBufferSize();
-		memcpy(pBuffer, &SliceH264Short, sizeof(DXVA_Slice_H264_Short));
+		assert(iSubSliceCount * sizeof(DXVA_Slice_H264_Short) <= uiSize);
+		memcpy(pBuffer, m_H264SliceShort, iSubSliceCount * sizeof(DXVA_Slice_H264_Short));
 		IF_FAILED_THROW(m_pVideoDecoder->ReleaseBuffer(DXVA2_SliceControlBufferType));
 
 		// CompBuffers
@@ -275,7 +274,7 @@ HRESULT CDxva2Decoder::DecodeFrame(CMFBuffer& cMFNaluBuffer, const PICTURE_INFO&
 		//--> m_BufferDesc[1].DataSize = sizeof(DXVA_Qmatrix_H264);
 		m_BufferDesc[2].DataSize = cMFNaluBuffer.GetBufferSize();
 		m_BufferDesc[2].NumMBsInBuffer = (Picture.sps.pic_width_in_mbs_minus1 + 1) * (Picture.sps.pic_height_in_map_units_minus1 + 1);
-		m_BufferDesc[3].DataSize = sizeof(DXVA_Slice_H264_Short);
+		m_BufferDesc[3].DataSize = iSubSliceCount * sizeof(DXVA_Slice_H264_Short);
 		m_BufferDesc[3].NumMBsInBuffer = m_BufferDesc[2].NumMBsInBuffer;
 
 		IF_FAILED_THROW(m_pVideoDecoder->Execute(&m_ExecuteParams));
@@ -289,6 +288,23 @@ HRESULT CDxva2Decoder::DecodeFrame(CMFBuffer& cMFNaluBuffer, const PICTURE_INFO&
 	catch(HRESULT){}
 
 	SAFE_RELEASE(pDevice);
+
+	return hr;
+}
+
+HRESULT CDxva2Decoder::AddSliceShortInfo(const int iSubSliceCount, const DWORD dwSize){
+
+	HRESULT hr;
+	IF_FAILED_RETURN(iSubSliceCount > 0 && iSubSliceCount < MAX_SUB_SLICE ? S_OK : E_INVALIDARG);
+
+	const int iIndex = iSubSliceCount - 1;
+
+	m_H264SliceShort[iIndex].SliceBytesInBuffer = dwSize;
+	m_H264SliceShort[iIndex].BSNALunitDataLocation = 0;
+	m_H264SliceShort[iIndex].wBadSliceChopping = 0;
+
+	for(int i = 1; i < iSubSliceCount; i++)
+		m_H264SliceShort[iIndex].BSNALunitDataLocation += m_H264SliceShort[i - 1].SliceBytesInBuffer;
 
 	return hr;
 }
@@ -397,7 +413,7 @@ void CDxva2Decoder::InitDxva2Struct(const SPS_DATA& sps){
 	memset(m_BufferDesc, 0, 4 * sizeof(DXVA2_DecodeBufferDesc));
 	memset(&m_H264PictureParams, 0, sizeof(DXVA_PicParams_H264));
 	InitQuantaMatrixParams(sps);
-	memset(m_H264SliceInfo, 0, MAX_SLICE * sizeof(DXVA_Slice_H264_Short));
+	memset(m_H264SliceShort, 0, MAX_SUB_SLICE * sizeof(DXVA_Slice_H264_Short));
 
 	m_BufferDesc[0].CompressedBufferType = DXVA2_PictureParametersBufferType;
 	m_BufferDesc[0].DataSize = sizeof(DXVA_PicParams_H264);
@@ -425,15 +441,15 @@ void CDxva2Decoder::InitPictureParams(const DWORD dwIndex, const PICTURE_INFO& P
 	m_H264PictureParams.wFrameWidthInMbsMinus1 = (USHORT)Picture.sps.pic_width_in_mbs_minus1;
 	m_H264PictureParams.wFrameHeightInMbsMinus1 = (USHORT)Picture.sps.pic_height_in_map_units_minus1;
 	m_H264PictureParams.CurrPic.Index7Bits = dwIndex;
-	m_H264PictureParams.CurrPic.AssociatedFlag = Picture.pps.pic_order_present_flag;
+	m_H264PictureParams.CurrPic.AssociatedFlag = Picture.pps.bottom_field_pic_order_in_frame_present_flag;
 	m_H264PictureParams.num_ref_frames = (UCHAR)Picture.sps.num_ref_frames;
 
 	//m_H264PictureParams.wBitFields = 0;
 	//m_H264PictureParams.field_pic_flag = 0;
 	//m_H264PictureParams.MbaffFrameFlag = 0;
-	m_H264PictureParams.residual_colour_transform_flag = Picture.sps.residual_colour_transform_flag;
+	m_H264PictureParams.residual_colour_transform_flag = Picture.sps.separate_colour_plane_flag;
 	//m_H264PictureParams.sp_for_switch_flag = 0;
-	m_H264PictureParams.chroma_format_idc = 1;
+	m_H264PictureParams.chroma_format_idc = Picture.sps.chroma_format_idc;
 	m_H264PictureParams.RefPicFlag = Picture.btNalRefIdc != 0;
 	m_H264PictureParams.constrained_intra_pred_flag = Picture.pps.constrained_intra_pred_flag;
 	m_H264PictureParams.weighted_pred_flag = Picture.pps.weighted_pred_flag;
@@ -486,7 +502,7 @@ void CDxva2Decoder::InitPictureParams(const DWORD dwIndex, const PICTURE_INFO& P
 	//m_H264PictureParams.delta_pic_order_always_zero_flag = 0;
 	m_H264PictureParams.direct_8x8_inference_flag = (UCHAR)Picture.sps.direct_8x8_inference_flag;
 	m_H264PictureParams.entropy_coding_mode_flag = (UCHAR)Picture.pps.entropy_coding_mode_flag;
-	m_H264PictureParams.pic_order_present_flag = (UCHAR)Picture.pps.pic_order_present_flag;
+	m_H264PictureParams.pic_order_present_flag = (UCHAR)Picture.pps.bottom_field_pic_order_in_frame_present_flag;
 	m_H264PictureParams.num_slice_groups_minus1 = (UCHAR)Picture.pps.num_slice_groups_minus1;
 	//m_H264PictureParams.slice_group_map_type = 0;
 	m_H264PictureParams.deblocking_filter_control_present_flag = (UCHAR)Picture.pps.deblocking_filter_control_present_flag;

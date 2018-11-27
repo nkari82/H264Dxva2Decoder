@@ -65,24 +65,15 @@ using std::vector;
 #include ".\Common\MFBuffer.h"
 #include ".\Common\MFLightBuffer.h"
 
-#define BITSTREAM_TOO_MANY_BITS  _HRESULT_TYPEDEF_(0xA0000001L)
-#define BITSTREAM_PAST_END       _HRESULT_TYPEDEF_(0xA0000002L)
-#define BITSTREAM_NON_ZERO       _HRESULT_TYPEDEF_(0xA0000003L)
-
-const DWORD D3DFMT_NV12 = MAKEFOURCC('N', 'V', '1', '2');
-
-const DWORD READ_SIZE = 65536;
-const DWORD H264_BUFFER_SIZE = 262144;
-
 //----------------------------------------------------------------------------------------------
 // Project Files
 #include "Mp4Definition.h"
 #include "H264Definition.h"
 #include "BitStream.h"
 #include "MFByteStream.h"
-#include "Dxva2Decoder.h"
-#include "H264NaluParser.h"
 #include "H264AtomParser.h"
+#include "H264NaluParser.h"
+#include "Dxva2Decoder.h"
 
 #define WINDOWAPPLICATION_CLASS L"WindowApplication"
 

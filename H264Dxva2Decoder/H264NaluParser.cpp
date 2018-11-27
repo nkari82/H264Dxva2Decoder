@@ -104,12 +104,15 @@ HRESULT CH264NaluParser::ParseVideoConfigDescriptor(const BYTE* pData, const DWO
 	return hr;
 }
 
-HRESULT CH264NaluParser::ParseNaluHeader(CMFBuffer& pVideoBuffer){
+HRESULT CH264NaluParser::ParseNaluHeader(CMFBuffer& pVideoBuffer, DWORD* pdwParsed){
 
 	HRESULT hr = S_OK;
 	DWORD dwNaluSize = 0;
 	DWORD dwSize = pVideoBuffer.GetBufferSize();
 	m_Picture.NalUnitType = NAL_UNIT_UNSPEC_0;
+
+	assert(pdwParsed != NULL);
+	*pdwParsed = 0;
 
 	if(dwSize <= 4){
 		TRACE((L"ParseNalHeader : buffer size <= 4"));
@@ -175,8 +178,13 @@ HRESULT CH264NaluParser::ParseNaluHeader(CMFBuffer& pVideoBuffer){
 			hr = S_OK;
 	}
 
-	if(SUCCEEDED(hr))
+	if(SUCCEEDED(hr)){
+
 		hr = pVideoBuffer.SetStartPosition(dwNaluSize);
+
+		if(SUCCEEDED(hr))
+			*pdwParsed = dwNaluSize + m_iNaluLenghtSize;
+	}
 
 	return hr;
 }
@@ -203,8 +211,7 @@ HRESULT CH264NaluParser::ParseSPS(){
 		IF_FAILED_RETURN(E_FAIL);
 	}
 
-	// Todo : not sure for all of these values
-	if(pSPS->profile_idc == 44 ||
+	if(pSPS->profile_idc == PROFILE_CAVLC444 ||
 		pSPS->profile_idc == PROFILE_SCALABLE_BASELINE ||
 		pSPS->profile_idc == PROFILE_SCALABLE_HIGH ||
 		pSPS->profile_idc == PROFILE_HIGH ||
@@ -212,14 +219,19 @@ HRESULT CH264NaluParser::ParseSPS(){
 		pSPS->profile_idc == PROFILE_MULTI_VIEW_HIGH ||
 		pSPS->profile_idc == PROFILE_HIGH422 ||
 		pSPS->profile_idc == PROFILE_STEREO_HIGH ||
+		pSPS->profile_idc == PROFILE_134 ||
+		pSPS->profile_idc == PROFILE_135 ||
 		pSPS->profile_idc == PROFILE_MULTI_DEPTH_VIEW_HIGH ||
-		pSPS->profile_idc == PROFILE_HIGH444 ||
-		pSPS->profile_idc == PROFILE_CAVLC444)
+		pSPS->profile_idc == PROFILE_139 ||
+		pSPS->profile_idc == PROFILE_HIGH444PP)
 	{
 		pSPS->chroma_format_idc = m_cBitStream.UGolomb();
 
+		// My GPU only handles chroma_format_idc == 1
+		IF_FAILED_RETURN(pSPS->chroma_format_idc == 1 ? S_OK : E_FAIL);
+
 		if(pSPS->chroma_format_idc == 3){
-			pSPS->residual_colour_transform_flag = m_cBitStream.GetBits(1) ? TRUE : FALSE;
+			pSPS->separate_colour_plane_flag = m_cBitStream.GetBits(1) ? TRUE : FALSE;
 		}
 
 		pSPS->bit_depth_luma_minus8 = m_cBitStream.UGolomb();
@@ -256,11 +268,7 @@ HRESULT CH264NaluParser::ParseSPS(){
 		// Todo : get delta_pic_order_always_zero_flag/etc...
 		IF_FAILED_RETURN(E_FAIL);
 	}
-	else if(pSPS->pic_order_cnt_type == 2){
-
-		//pSPS->MaxFrameNum = 1 << (pSPS->log2_max_pic_order_cnt_lsb_minus4 + 4);
-	}
-	else{
+	else if(pSPS->pic_order_cnt_type != 2){
 
 		IF_FAILED_RETURN(E_FAIL);
 	}
@@ -324,7 +332,7 @@ HRESULT CH264NaluParser::ParsePPS(){
 	}
 
 	pPPS->entropy_coding_mode_flag = m_cBitStream.GetBits(1) ? TRUE : FALSE;
-	pPPS->pic_order_present_flag = m_cBitStream.GetBits(1) ? TRUE : FALSE;
+	pPPS->bottom_field_pic_order_in_frame_present_flag = m_cBitStream.GetBits(1) ? TRUE : FALSE;
 	pPPS->num_slice_groups_minus1 = m_cBitStream.UGolomb();
 
 	if((pPPS->num_slice_groups_minus1 + 1) > MAX_SLICEGROUP_IDS){
@@ -392,7 +400,7 @@ HRESULT CH264NaluParser::ParsePPS(){
 
 HRESULT CH264NaluParser::ParseCodedSlice(){
 
-	HRESULT hr;
+	HRESULT hr = S_OK;
 	BOOL field_pic_flag = 0;
 
 	ZeroMemory(m_Picture.slice.vReorderedList, sizeof(m_Picture.slice.vReorderedList));
@@ -400,11 +408,13 @@ HRESULT CH264NaluParser::ParseCodedSlice(){
 
 	m_Picture.slice.first_mb_in_slice = (USHORT)m_cBitStream.UGolomb();
 
-	// todo : handle multiple NALU in one slice frame
-	IF_FAILED_RETURN(m_Picture.slice.first_mb_in_slice ? E_FAIL : S_OK);
+	// If there is sub-slice, just skip, seems to be ok
+	if(m_Picture.slice.first_mb_in_slice > 0)
+		return hr;
 
 	m_Picture.slice.slice_type = (USHORT)m_cBitStream.UGolomb();
 	m_Picture.slice.pic_parameter_set_id = (USHORT)m_cBitStream.UGolomb();
+	// if(separate_colour_plane_flag == 1) colour_plane_id
 	m_Picture.slice.frame_num = (USHORT)m_cBitStream.GetBits(m_Picture.sps.log2_max_frame_num_minus4 + 4);
 
 	if(!m_Picture.sps.frame_mbs_only_flag){
@@ -415,8 +425,7 @@ HRESULT CH264NaluParser::ParseCodedSlice(){
 
 	if(m_Picture.NalUnitType == NAL_UNIT_CODED_SLICE_IDR){
 
-		// idr_pic_id
-		m_cBitStream.UGolomb();
+		/*DWORD idr_pic_id =*/ m_cBitStream.UGolomb();
 		m_Picture.slice.FrameNum = m_Picture.slice.frame_num;
 		m_Picture.slice.FrameNumWrap = m_Picture.slice.frame_num;
 	}
@@ -424,15 +433,17 @@ HRESULT CH264NaluParser::ParseCodedSlice(){
 	if(m_Picture.sps.pic_order_cnt_type == 0){
 
 		m_Picture.slice.pic_order_cnt_lsb = (USHORT)m_cBitStream.GetBits(m_Picture.sps.log2_max_pic_order_cnt_lsb_minus4 + 4);
-		// assert(pic_order_cnt_lsb < MaxPicOrderCntLsb)
-		// if(m_Picture.pps.bBottomFieldPicOrderFlag && !field_pic_flag)
 
-		if(m_Picture.pps.pic_order_present_flag && !field_pic_flag){
+		// assert(pic_order_cnt_lsb < MaxPicOrderCntLsb)
+
+		if(m_Picture.pps.bottom_field_pic_order_in_frame_present_flag && !field_pic_flag){
 
 			// todo : delta_pic_order_cnt_bottom
 			/*DWORD delta_pic_order_cnt_bottom =*/ m_cBitStream.SGolomb();
 		}
 	}
+	/*else if(m_Picture.sps.pic_order_cnt_type == 1 && !m_Picture.sps.delta_pic_order_always_zero_flag){
+	}*/
 	else{
 
 		// dwPicOrderCountType == 2 : Display Order == Decoding Order

@@ -9,6 +9,8 @@
 // the NUM_DXVA2_SURFACE seems to be determined by the number of times where a frame stays in the short ref buffer
 #define NUM_DXVA2_SURFACE 32
 
+const DWORD D3DFMT_NV12 = MAKEFOURCC('N', 'V', '1', '2');
+
 class CDxva2Decoder{
 
 public:
@@ -18,8 +20,9 @@ public:
 
 	HRESULT InitDXVA2(const SPS_DATA&, const UINT, const UINT, const UINT, const UINT);
 	void OnRelease();
-	HRESULT DecodeFrame(CMFBuffer&, const PICTURE_INFO&, const LONGLONG&);
+	HRESULT DecodeFrame(CMFBuffer&, const PICTURE_INFO&, const LONGLONG&, const int);
 	HRESULT DisplayFrame();
+	HRESULT AddSliceShortInfo(const int, const DWORD);
 	void ClearPresentation(){ m_dqPicturePresentation.clear(); }
 	DWORD PictureToDisplayCount() const{ return m_dqPicturePresentation.size(); }
 
@@ -48,7 +51,7 @@ private:
 	DXVA2_DecodeBufferDesc m_BufferDesc[4];
 	DXVA_PicParams_H264 m_H264PictureParams;
 	DXVA_Qmatrix_H264 m_H264QuantaMatrix;
-	DXVA_Slice_H264_Short m_H264SliceInfo[MAX_SLICE];// Todo check MAX_SLICE for h264
+	DXVA_Slice_H264_Short m_H264SliceShort[MAX_SUB_SLICE];
 	DWORD m_dwCurPictureId;
 	DWORD m_dwPicturePresent;
 	DWORD m_dwPauseDuration;

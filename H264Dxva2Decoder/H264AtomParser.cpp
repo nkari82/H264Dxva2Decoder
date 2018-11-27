@@ -26,7 +26,7 @@ HRESULT CH264AtomParser::Initialize(LPCWSTR wszFile){
 
 		IF_FAILED_THROW(CMFByteStream::CreateInstance(&pByteStream));
 		IF_FAILED_THROW(pByteStream->Initialize(wszFile));
-		IF_FAILED_THROW(m_cMp4ParserBuffer.Initialize(READ_SIZE));
+		IF_FAILED_THROW(m_cMp4ParserBuffer.Initialize(MP4_READ_SIZE));
 
 		m_pByteStream = pByteStream;
 		m_pByteStream->AddRef();
