@@ -101,6 +101,7 @@ HRESULT ProcessDecode(){
 
 				if(iSubSliceCount == 0){
 
+					// todo : we can avoid the use of NalUnitBuffer and memcpy. Just use VideoBuffer
 					IF_FAILED_THROW(NalUnitBuffer.Reserve(VideoBuffer.GetBufferSize()));
 					memcpy(NalUnitBuffer.GetStartBuffer(), VideoBuffer.GetStartBuffer(), VideoBuffer.GetBufferSize());
 					IF_FAILED_THROW(NalUnitBuffer.SetEndPosition(VideoBuffer.GetBufferSize()));
@@ -119,6 +120,7 @@ HRESULT ProcessDecode(){
 					}
 					else{
 						IF_FAILED_THROW(AddByteAndConvertAvccToAnnexB(NalUnitBuffer));
+						dwParsed += 1;
 					}
 
 					IF_FAILED_THROW(pDxva2Decoder->AddSliceShortInfo(iSubSliceCount, dwParsed));
@@ -195,6 +197,7 @@ HRESULT AddByteAndConvertAvccToAnnexB(CMFBuffer& pNalUnitBuffer){
 	BYTE btStartCode[3] = {0x00, 0x00, 0x01};
 
 	IF_FAILED_RETURN(pNalUnitBuffer.Reserve(1));
+	// Normally memmove here, but seems to be ok with memcpy
 	memcpy(pNalUnitBuffer.GetStartBuffer() + 1, pNalUnitBuffer.GetStartBuffer(), pNalUnitBuffer.GetBufferSize());
 	memcpy(pNalUnitBuffer.GetStartBuffer(), btStartCode, 3);
 	IF_FAILED_RETURN(pNalUnitBuffer.SetEndPosition(1));
