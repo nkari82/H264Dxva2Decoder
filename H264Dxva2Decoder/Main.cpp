@@ -139,9 +139,21 @@ HRESULT ProcessDecode(){
 				}
 				else{
 
-					// We assume sub-slices are contiguous
-					assert(iSubSliceCount == 0);
-					NalUnitBuffer.Reset();
+					if(iSubSliceCount > 0){
+
+						// Can be NAL_UNIT_FILLER_DATA after sub-slices
+						NalUnitBuffer.SetStartPositionAtBeginning();
+
+						IF_FAILED_THROW(pDxva2Decoder->DecodeFrame(NalUnitBuffer, cH264NaluParser.GetPicture(), llTime, iSubSliceCount));
+						IF_FAILED_THROW(pDxva2Decoder->DisplayFrame());
+
+						// We assume sub-slices are contiguous, so skip others
+						VideoBuffer.Reset();
+					}
+					else{
+
+						NalUnitBuffer.Reset();
+					}
 				}
 
 				if(hr == S_FALSE){
