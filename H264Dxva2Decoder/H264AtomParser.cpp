@@ -56,7 +56,7 @@ HRESULT CH264AtomParser::ParseMp4(){
 
 		for(auto& TrackInfo : m_vTrackInfo){
 
-			if(TrackInfo.dwTypeHandler == HANDLER_TYPE_VIDEO){
+			if(TrackInfo.dwTypeHandler == HANDLER_TYPE_VIDEO && TrackInfo.pConfig != NULL){
 
 				IF_FAILED_THROW(FinalizeSampleTime(TrackInfo));
 				IF_FAILED_THROW(FinalizeSampleOffset(TrackInfo));
@@ -224,7 +224,7 @@ HRESULT CH264AtomParser::GetFirstVideoStream(DWORD* pdwTrackId){
 
 	for(auto& TrackInfo : m_vTrackInfo){
 
-		if(TrackInfo.dwTypeHandler == HANDLER_TYPE_VIDEO){
+		if(TrackInfo.dwTypeHandler == HANDLER_TYPE_VIDEO && TrackInfo.pConfig != NULL){
 
 			*pdwTrackId = TrackInfo.dwTrackId;
 			hr = S_OK;
