@@ -49,6 +49,8 @@ CDxva2Decoder::CDxva2Decoder(){
 	m_dwCurPictureId = 0;
 	m_pDXVAVP = NULL;
 	m_iPrevTopFieldOrderCount = 0;
+	m_eNalUnitType = NAL_UNIT_UNSPEC_0;
+	m_btNalRefIdc = 0x00;
 	m_dwPicturePresent = 0;
 	m_dwPauseDuration = 40;
 }
@@ -169,6 +171,8 @@ void CDxva2Decoder::OnRelease(){
 
 	m_dwCurPictureId = 0;
 	m_iPrevTopFieldOrderCount = 0;
+	m_eNalUnitType = NAL_UNIT_UNSPEC_0;
+	m_btNalRefIdc = 0x00;
 
 	if(m_pDXVAManager && m_hD3d9Device){
 
@@ -434,7 +438,7 @@ void CDxva2Decoder::InitPictureParams(const DWORD dwIndex, const PICTURE_INFO& P
 	static DWORD dwStatusReportFeedbackNumber = 1;
 	int iIndex = 0;
 
-	if(Picture.NalUnitType == NAL_UNIT_CODED_SLICE_IDR){
+	if(m_eNalUnitType == NAL_UNIT_CODED_SLICE_IDR){
 		m_dqPoc.clear();
 	}
 
@@ -450,7 +454,7 @@ void CDxva2Decoder::InitPictureParams(const DWORD dwIndex, const PICTURE_INFO& P
 	m_H264PictureParams.residual_colour_transform_flag = Picture.sps.separate_colour_plane_flag;
 	//m_H264PictureParams.sp_for_switch_flag = 0;
 	m_H264PictureParams.chroma_format_idc = Picture.sps.chroma_format_idc;
-	m_H264PictureParams.RefPicFlag = Picture.btNalRefIdc != 0;
+	m_H264PictureParams.RefPicFlag = m_btNalRefIdc != 0;
 	m_H264PictureParams.constrained_intra_pred_flag = Picture.pps.constrained_intra_pred_flag;
 	m_H264PictureParams.weighted_pred_flag = Picture.pps.weighted_pred_flag;
 	m_H264PictureParams.weighted_bipred_idc = Picture.pps.weighted_bipred_idc;
@@ -543,12 +547,12 @@ HRESULT CDxva2Decoder::AddNalUnitBufferPadding(CMFBuffer& cMFNaluBuffer, const U
 
 void CDxva2Decoder::HandlePOC(const DWORD dwIndex, const PICTURE_INFO& Picture, const LONGLONG& llTime){
 
-	if(Picture.btNalRefIdc && Picture.slice.PicMarking.adaptive_ref_pic_marking_mode_flag == FALSE && m_dqPoc.size() >= Picture.sps.num_ref_frames){
+	if(m_btNalRefIdc && Picture.slice.PicMarking.adaptive_ref_pic_marking_mode_flag == FALSE && m_dqPoc.size() >= Picture.sps.num_ref_frames){
 
 		m_dqPoc.pop_back();
 	}
 
-	if(Picture.btNalRefIdc){
+	if(m_btNalRefIdc){
 
 		POC NewPoc;
 
@@ -572,7 +576,7 @@ void CDxva2Decoder::HandlePOC(const DWORD dwIndex, const PICTURE_INFO& Picture, 
 	else
 		m_dqPicturePresentation.push_back(pp);
 
-	if(!Picture.btNalRefIdc)
+	if(!m_btNalRefIdc)
 		return;
 
 	UINT uiCurIndex;

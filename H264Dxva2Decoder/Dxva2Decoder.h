@@ -25,6 +25,7 @@ public:
 	HRESULT AddSliceShortInfo(const int, const DWORD);
 	void ClearPresentation(){ m_dqPicturePresentation.clear(); }
 	DWORD PictureToDisplayCount() const{ return m_dqPicturePresentation.size(); }
+	void SetCurrentNalu(const NAL_UNIT_TYPE eNalUnitType, const BYTE btNalRefIdc){ m_eNalUnitType = eNalUnitType; m_btNalRefIdc = btNalRefIdc; }
 
 private:
 
@@ -78,6 +79,8 @@ private:
 	deque<POC> m_dqPoc;
 	deque<PICTURE_PRESENTATION> m_dqPicturePresentation;
 	INT m_iPrevTopFieldOrderCount;
+	NAL_UNIT_TYPE m_eNalUnitType;
+	BYTE m_btNalRefIdc;
 
 	HRESULT InitForm(const UINT, const UINT);
 	HRESULT InitDecoderService();

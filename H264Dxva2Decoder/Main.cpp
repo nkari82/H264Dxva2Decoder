@@ -114,6 +114,9 @@ HRESULT ProcessDecode(){
 					iSubSliceCount++;
 					dwTotalPicture++;
 
+					if(iSubSliceCount == 1)
+						pDxva2Decoder->SetCurrentNalu(cH264NaluParser.GetPicture().NalUnitType, cH264NaluParser.GetPicture().btNalRefIdc);
+
 					// DXVA2 needs start code
 					if(iNaluLenghtSize == 4){
 						memcpy(NalUnitBuffer.GetStartBuffer(), btStartCode, 4);
