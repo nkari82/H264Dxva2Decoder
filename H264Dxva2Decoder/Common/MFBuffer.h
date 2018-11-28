@@ -28,6 +28,7 @@ public:
 	DWORD GetBufferSize() const{ assert(m_dwEndPosition >= m_dwStartPosition); return (m_dwEndPosition - m_dwStartPosition); }
 	DWORD GetAllocatedSize() const{ return m_dwTotalSize; }
 	void SetStartPositionAtBeginning(){ m_dwStartPosition = 0; }
+	void SetEndPositionCurrent(){ assert(m_dwEndPosition >= m_dwStartPosition); m_dwEndPosition = m_dwStartPosition; }
 
 private:
 
