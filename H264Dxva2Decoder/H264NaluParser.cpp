@@ -241,7 +241,7 @@ HRESULT CH264NaluParser::ParseSPS(){
 
 		if(pSPS->seq_scaling_matrix_present_flag){
 
-			ScalingListAll(pSPS);
+			ScalingListSpsAll(pSPS);
 			pSPS->bHasCustomScalingList = TRUE;
 		}
 	}
@@ -363,6 +363,7 @@ HRESULT CH264NaluParser::ParsePPS(){
 	pPPS->redundant_pic_cnt_present_flag = m_cBitStream.GetBits(1) ? TRUE : FALSE;
 
 	if(pPPS->redundant_pic_cnt_present_flag != FALSE){
+
 		// todo
 		IF_FAILED_RETURN(E_FAIL);
 	}
@@ -387,8 +388,8 @@ HRESULT CH264NaluParser::ParsePPS(){
 
 	if(pPPS->pic_scaling_matrix_present_flag){
 
-		// todo : pic_scaling_matrix_present_flag
-		IF_FAILED_RETURN(E_FAIL);
+		ScalingListPpsAll(pPPS, pPPS->transform_8x8_mode_flag, m_Picture.sps.chroma_format_idc == 3);
+		pPPS->bHasCustomScalingList = TRUE;
 	}
 
 	pPPS->second_chroma_qp_index_offset = m_cBitStream.SGolomb();
@@ -884,7 +885,7 @@ void CH264NaluParser::hrd_parameters(){
 	/*DWORD time_offset_length =*/ m_cBitStream.GetBits(5);
 }
 
-void CH264NaluParser::ScalingListAll(SPS_DATA* pSPS){
+void CH264NaluParser::ScalingListSpsAll(SPS_DATA* pSPS){
 
 	ScalingList(16, pSPS->ScalingList4x4[0], Default_4x4_Intra, Default_4x4_Intra);
 	ScalingList(16, pSPS->ScalingList4x4[1], Default_4x4_Intra, pSPS->ScalingList4x4[0]);
@@ -902,6 +903,30 @@ void CH264NaluParser::ScalingListAll(SPS_DATA* pSPS){
 		ScalingList(64, pSPS->ScalingList8x8[3], Default_8x8_Inter, pSPS->ScalingList8x8[1]);
 		ScalingList(64, pSPS->ScalingList8x8[4], Default_8x8_Intra, pSPS->ScalingList8x8[2]);
 		ScalingList(64, pSPS->ScalingList8x8[5], Default_8x8_Inter, pSPS->ScalingList8x8[3]);
+	}
+}
+
+void CH264NaluParser::ScalingListPpsAll(PPS_DATA* pPPS, const BOOL bList8x8, const BOOL bChroma){
+
+	ScalingList(16, pPPS->ScalingList4x4[0], Default_4x4_Intra, Default_4x4_Intra);
+	ScalingList(16, pPPS->ScalingList4x4[1], Default_4x4_Intra, pPPS->ScalingList4x4[0]);
+	ScalingList(16, pPPS->ScalingList4x4[2], Default_4x4_Intra, pPPS->ScalingList4x4[1]);
+	ScalingList(16, pPPS->ScalingList4x4[3], Default_4x4_Inter, Default_4x4_Inter);
+	ScalingList(16, pPPS->ScalingList4x4[4], Default_4x4_Inter, pPPS->ScalingList4x4[3]);
+	ScalingList(16, pPPS->ScalingList4x4[5], Default_4x4_Inter, pPPS->ScalingList4x4[4]);
+
+	if(bList8x8){
+
+		ScalingList(64, pPPS->ScalingList8x8[0], Default_8x8_Intra, Default_8x8_Intra);
+		ScalingList(64, pPPS->ScalingList8x8[1], Default_8x8_Inter, Default_8x8_Inter);
+
+		if(bChroma){
+
+			ScalingList(64, pPPS->ScalingList8x8[2], Default_8x8_Intra, pPPS->ScalingList8x8[0]);
+			ScalingList(64, pPPS->ScalingList8x8[3], Default_8x8_Inter, pPPS->ScalingList8x8[1]);
+			ScalingList(64, pPPS->ScalingList8x8[4], Default_8x8_Intra, pPPS->ScalingList8x8[2]);
+			ScalingList(64, pPPS->ScalingList8x8[5], Default_8x8_Inter, pPPS->ScalingList8x8[3]);
+		}
 	}
 }
 

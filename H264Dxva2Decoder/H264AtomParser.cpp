@@ -329,10 +329,10 @@ HRESULT CH264AtomParser::FinalizeSampleOffset(TRACK_INFO& TrackInfo){
 	DWORD dwPrevOffset = 0;
 	DWORD dwPrevSize = 0;
 
-	IF_FAILED_RETURN(TrackInfo.vSamples.size() == 0 || TrackInfo.vChunks.size() == 0 || TrackInfo.vChunkOffset.size() == 0 ? E_FAIL : S_OK);
-
 	// todo : fixed sample size (for video, should not happen)
 	IF_FAILED_RETURN(TrackInfo.dwFixedSampleSize == 0 ? S_OK : E_FAIL);
+
+	IF_FAILED_RETURN(TrackInfo.vSamples.size() == 0 || TrackInfo.vChunks.size() == 0 || TrackInfo.vChunkOffset.size() == 0 ? E_FAIL : S_OK);
 
 	vector<CHUNCK_INFO>::const_iterator itChunk = TrackInfo.vChunks.begin();
 	vector<DWORD>::const_iterator itChunkOffset = TrackInfo.vChunkOffset.begin();
@@ -998,8 +998,10 @@ HRESULT CH264AtomParser::ParseSampleDescHeader(TRACK_INFO& TrackInfo, BYTE* pDat
 		return hr;
 
 	// todo : if more than one STSD. For now just get the first
-	if(dwAtomCount > 1)
+	if(dwAtomCount > 1){
+
 		TRACE((L"error : dwAtomCount = %u", dwAtomCount));
+	}
 
 	pData += 4;
 

@@ -284,6 +284,9 @@ struct PPS_DATA{
 	BOOL transform_8x8_mode_flag;
 	BOOL pic_scaling_matrix_present_flag;
 	DWORD second_chroma_qp_index_offset;
+	BOOL bHasCustomScalingList;
+	UCHAR ScalingList4x4[6][16];
+	UCHAR ScalingList8x8[6][64];
 };
 
 struct REORDERED_LIST{
