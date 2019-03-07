@@ -193,9 +193,7 @@ HRESULT CH264AtomParser::GetVideoFrameRate(const DWORD dwTrackId, UINT* puiNumer
 			if(rit != TrackInfo.vSamples.rend()){
 
 				ui64Time = rit->llTime + rit->llDuration;
-
-				if(TrackInfo.vSamples.size() != 0)
-					ui64Time /= TrackInfo.vSamples.size();
+				ui64Time /= (TrackInfo.vSamples.size() + 1);
 			}
 
 			break;
@@ -261,7 +259,7 @@ HRESULT CH264AtomParser::FinalizeSampleTime(TRACK_INFO& TrackInfo){
 
 		for(auto& itSample : TrackInfo.vSamples){
 
-			llDuration = itTime->dwOffset * (10000000 / dwTimeScale);
+			llDuration = (LONGLONG)((itTime->dwOffset / (double)dwTimeScale) * 10000000);
 			itSample.llDuration = llDuration;
 
 			dwTimeSampleIndex++;
@@ -274,7 +272,7 @@ HRESULT CH264AtomParser::FinalizeSampleTime(TRACK_INFO& TrackInfo){
 				dwTimeSampleIndex = 0;
 			}
 
-			itSample.llTime = llTime + (itComposition->dwOffset * (10000000 / dwTimeScale));
+			itSample.llTime = llTime + (LONGLONG)(((itComposition->dwOffset / (double)dwTimeScale) * 10000000));
 
 			if(itComposition->dwCount == 1){
 
@@ -300,7 +298,7 @@ HRESULT CH264AtomParser::FinalizeSampleTime(TRACK_INFO& TrackInfo){
 
 		for(auto& itSample : TrackInfo.vSamples){
 
-			llDuration = itTime->dwOffset * (10000000 / dwTimeScale);
+			llDuration = (LONGLONG)((itTime->dwOffset / (double)dwTimeScale) * 10000000);
 			itSample.llDuration = llDuration;
 
 			dwTimeSampleIndex++;
