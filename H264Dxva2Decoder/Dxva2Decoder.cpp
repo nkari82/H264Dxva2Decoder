@@ -479,7 +479,7 @@ void CDxva2Decoder::InitPictureParams(const DWORD dwIndex, const PICTURE_INFO& P
 	m_H264PictureParams.CurrFieldOrderCnt[1] = m_H264PictureParams.CurrFieldOrderCnt[0] = Picture.slice.TopFieldOrderCnt;
 	m_H264PictureParams.UsedForReferenceFlags = 0;
 
-	for(auto it = m_dqPoc.begin(); it != m_dqPoc.end(); iIndex++, ++it){
+	for(auto it = m_dqPoc.begin(); it != m_dqPoc.end() && iIndex < 16; iIndex++, ++it){
 
 		m_H264PictureParams.FrameNumList[iIndex] = it->usFrameList;
 
