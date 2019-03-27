@@ -29,6 +29,7 @@ public:
 	DWORD GetAllocatedSize() const{ return m_dwTotalSize; }
 	void SetStartPositionAtBeginning(){ m_dwStartPosition = 0; }
 	void SetEndPositionCurrent(){ assert(m_dwEndPosition >= m_dwStartPosition); m_dwEndPosition = m_dwStartPosition; }
+	HRESULT DecreaseEndPosition();
 
 private:
 
@@ -207,6 +208,19 @@ inline HRESULT CMFBuffer::SetSize(const DWORD dwSize){
 	}
 
 	return hr;
+}
+
+inline HRESULT CMFBuffer::DecreaseEndPosition(){
+
+	assert(m_dwStartAfterResize == 0);
+
+	if(m_dwEndPosition == 0 || ((m_dwEndPosition - m_dwStartPosition) == 0)){
+		return E_UNEXPECTED;
+	}
+
+	m_dwEndPosition--;
+
+	return S_OK;
 }
 
 #endif
