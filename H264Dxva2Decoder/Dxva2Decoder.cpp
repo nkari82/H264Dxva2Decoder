@@ -53,6 +53,7 @@ CDxva2Decoder::CDxva2Decoder(){
 	m_btNalRefIdc = 0x00;
 	m_dwPicturePresent = 0;
 	m_dwPauseDuration = 40;
+	m_dwStatusReportFeedbackNumber = 1;
 }
 
 HRESULT CDxva2Decoder::InitForm(const UINT uiWidth, const UINT uiHeight){
@@ -194,6 +195,7 @@ void CDxva2Decoder::OnRelease(){
 	SAFE_RELEASE(m_pD3D9Ex);
 	SAFE_RELEASE(m_pVideoDecoder);
 	m_pResetToken = 0;
+	m_dwStatusReportFeedbackNumber = 1;
 
 	SAFE_RELEASE(m_pDXVAVP);
 
@@ -226,6 +228,7 @@ HRESULT CDxva2Decoder::DecodeFrame(CMFBuffer& cMFNaluBuffer, const PICTURE_INFO&
 
 	assert(m_pVideoDecoder != NULL);
 
+	// todo ; optimize the use of dxva2 surface index
 	if(m_dwCurPictureId >= NUM_DXVA2_SURFACE){
 		m_dwCurPictureId = 0;
 	}
@@ -435,7 +438,6 @@ void CDxva2Decoder::InitDxva2Struct(const SPS_DATA& sps){
 
 void CDxva2Decoder::InitPictureParams(const DWORD dwIndex, const PICTURE_INFO& Picture){
 
-	static DWORD dwStatusReportFeedbackNumber = 1;
 	int iIndex = 0;
 
 	if(m_eNalUnitType == NAL_UNIT_CODED_SLICE_IDR){
@@ -467,7 +469,7 @@ void CDxva2Decoder::InitPictureParams(const DWORD dwIndex, const PICTURE_INFO& P
 	m_H264PictureParams.bit_depth_luma_minus8 = (UCHAR)Picture.sps.bit_depth_luma_minus8;
 	m_H264PictureParams.bit_depth_chroma_minus8 = (UCHAR)Picture.sps.bit_depth_chroma_minus8;
 	m_H264PictureParams.Reserved16Bits = 3;
-	m_H264PictureParams.StatusReportFeedbackNumber = dwStatusReportFeedbackNumber++;
+	m_H264PictureParams.StatusReportFeedbackNumber = m_dwStatusReportFeedbackNumber++;
 
 	for(int i = 0; i < 16; i++){
 
@@ -514,8 +516,8 @@ void CDxva2Decoder::InitPictureParams(const DWORD dwIndex, const PICTURE_INFO& P
 	//m_H264PictureParams.Reserved8BitsB = 0;
 	m_H264PictureParams.slice_group_change_rate_minus1 = (USHORT)Picture.pps.num_slice_groups_minus1;
 
-	if(dwStatusReportFeedbackNumber == ULONG_MAX){
-		dwStatusReportFeedbackNumber = 1;
+	if(m_dwStatusReportFeedbackNumber == ULONG_MAX){
+		m_dwStatusReportFeedbackNumber = 1;
 	}
 }
 
@@ -592,7 +594,7 @@ void CDxva2Decoder::HandlePOC(const DWORD dwIndex, const PICTURE_INFO& Picture, 
 			uiCurIndex = Picture.slice.PicMarking.mmcoOPMode[iIndex].difference_of_pic_nums_minus1 + 1;
 
 			if(uiCurIndex >= m_dqPoc.size())
-				uiCurIndex = m_dqPoc.size() - 1;
+				uiCurIndex = (UINT)(m_dqPoc.size() - 1);
 
 			if(uiCurIndex < m_dqPoc.size()){
 

@@ -110,6 +110,7 @@ HRESULT CH264NaluParser::ParseNaluHeader(CMFBuffer& pVideoBuffer, DWORD* pdwPars
 	DWORD dwNaluSize = 0;
 	DWORD dwSize = pVideoBuffer.GetBufferSize();
 	m_Picture.NalUnitType = NAL_UNIT_UNSPEC_0;
+	int iNumPreventionBytes = 0;
 
 	assert(pdwParsed != NULL);
 	*pdwParsed = 0;
@@ -145,7 +146,8 @@ HRESULT CH264NaluParser::ParseNaluHeader(CMFBuffer& pVideoBuffer, DWORD* pdwPars
 	IF_FAILED_RETURN(pVideoBuffer.SetStartPosition(m_iNaluLenghtSize));
 
 	// Todo : remove the consecutive ZERO at the end of current NAL in the reverse order.--2011.6.1
-	// RemoveEmulationPreventionByte : no problem for now
+
+	IF_FAILED_RETURN(RemoveEmulationPreventionByte(pVideoBuffer, &iNumPreventionBytes, dwNaluSize));
 
 	BYTE* pData = pVideoBuffer.GetStartBuffer();
 
@@ -180,7 +182,7 @@ HRESULT CH264NaluParser::ParseNaluHeader(CMFBuffer& pVideoBuffer, DWORD* pdwPars
 
 	if(SUCCEEDED(hr)){
 
-		hr = pVideoBuffer.SetStartPosition(dwNaluSize);
+		hr = pVideoBuffer.SetStartPosition(dwNaluSize - iNumPreventionBytes);
 
 		if(SUCCEEDED(hr))
 			*pdwParsed = dwNaluSize + m_iNaluLenghtSize;
@@ -493,22 +495,36 @@ HRESULT CH264NaluParser::ParseCodedSlice(){
 		if(ref_pic_list_reordering_flag_l0){
 
 			int iIndex = -1;
+			USHORT reordering_of_pic_nums_idc;
 
 			do{
 
 				iIndex++;
-				m_Picture.slice.dwListCountL0++;
+				reordering_of_pic_nums_idc = (USHORT)m_cBitStream.UGolomb();
 
-				m_Picture.slice.vReorderedList[0][iIndex].reordering_of_pic_nums_idc = (USHORT)m_cBitStream.UGolomb();
+				if(iIndex < 16){
 
-				if(m_Picture.slice.vReorderedList[0][iIndex].reordering_of_pic_nums_idc == 0 || m_Picture.slice.vReorderedList[0][iIndex].reordering_of_pic_nums_idc == 1)
-					m_Picture.slice.vReorderedList[0][iIndex].abs_diff_pic_num_minus1 = (USHORT)m_cBitStream.UGolomb();
-				else if(m_Picture.slice.vReorderedList[0][iIndex].reordering_of_pic_nums_idc == 2)
-					m_Picture.slice.vReorderedList[0][iIndex].long_term_pic_num = (USHORT)m_cBitStream.UGolomb();
-				else if(m_Picture.slice.vReorderedList[0][iIndex].reordering_of_pic_nums_idc != 3)
-					IF_FAILED_RETURN(E_FAIL);
+					m_Picture.slice.dwListCountL0++;
+
+					m_Picture.slice.vReorderedList[0][iIndex].reordering_of_pic_nums_idc = reordering_of_pic_nums_idc;
+
+					if(m_Picture.slice.vReorderedList[0][iIndex].reordering_of_pic_nums_idc == 0 || m_Picture.slice.vReorderedList[0][iIndex].reordering_of_pic_nums_idc == 1)
+						m_Picture.slice.vReorderedList[0][iIndex].abs_diff_pic_num_minus1 = (USHORT)m_cBitStream.UGolomb();
+					else if(m_Picture.slice.vReorderedList[0][iIndex].reordering_of_pic_nums_idc == 2)
+						m_Picture.slice.vReorderedList[0][iIndex].long_term_pic_num = (USHORT)m_cBitStream.UGolomb();
+					else if(m_Picture.slice.vReorderedList[0][iIndex].reordering_of_pic_nums_idc != 3)
+						IF_FAILED_RETURN(E_FAIL);
+				}
+				else{
+
+					if(reordering_of_pic_nums_idc == 0 || reordering_of_pic_nums_idc == 1 || reordering_of_pic_nums_idc == 2)
+						m_cBitStream.UGolomb();
+					else if(reordering_of_pic_nums_idc != 3)
+						IF_FAILED_RETURN(E_FAIL);
+
+				}
 			}
-			while(m_Picture.slice.vReorderedList[0][iIndex].reordering_of_pic_nums_idc != 3);
+			while(reordering_of_pic_nums_idc != 3);
 		}
 	}
 
@@ -519,22 +535,36 @@ HRESULT CH264NaluParser::ParseCodedSlice(){
 		if(ref_pic_list_reordering_flag_l1){
 
 			int iIndex = -1;
+			USHORT reordering_of_pic_nums_idc;
 
 			do{
 
 				iIndex++;
-				m_Picture.slice.dwListCountL1++;
+				reordering_of_pic_nums_idc = (USHORT)m_cBitStream.UGolomb();
 
-				m_Picture.slice.vReorderedList[1][iIndex].reordering_of_pic_nums_idc = (USHORT)m_cBitStream.UGolomb();
+				if(iIndex < 16){
 
-				if(m_Picture.slice.vReorderedList[1][iIndex].reordering_of_pic_nums_idc == 0 || m_Picture.slice.vReorderedList[1][iIndex].reordering_of_pic_nums_idc == 1)
-					m_Picture.slice.vReorderedList[1][iIndex].abs_diff_pic_num_minus1 = (USHORT)m_cBitStream.UGolomb();
-				else if(m_Picture.slice.vReorderedList[1][iIndex].reordering_of_pic_nums_idc == 2)
-					m_Picture.slice.vReorderedList[1][iIndex].long_term_pic_num = (USHORT)m_cBitStream.UGolomb();
-				else if(m_Picture.slice.vReorderedList[1][iIndex].reordering_of_pic_nums_idc != 3)
-					IF_FAILED_RETURN(E_FAIL);
+					m_Picture.slice.dwListCountL1++;
+
+					m_Picture.slice.vReorderedList[1][iIndex].reordering_of_pic_nums_idc = reordering_of_pic_nums_idc;
+
+					if(m_Picture.slice.vReorderedList[1][iIndex].reordering_of_pic_nums_idc == 0 || m_Picture.slice.vReorderedList[1][iIndex].reordering_of_pic_nums_idc == 1)
+						m_Picture.slice.vReorderedList[1][iIndex].abs_diff_pic_num_minus1 = (USHORT)m_cBitStream.UGolomb();
+					else if(m_Picture.slice.vReorderedList[1][iIndex].reordering_of_pic_nums_idc == 2)
+						m_Picture.slice.vReorderedList[1][iIndex].long_term_pic_num = (USHORT)m_cBitStream.UGolomb();
+					else if(m_Picture.slice.vReorderedList[1][iIndex].reordering_of_pic_nums_idc != 3)
+						IF_FAILED_RETURN(E_FAIL);
+				}
+				else{
+
+					if(reordering_of_pic_nums_idc == 0 || reordering_of_pic_nums_idc == 1 || reordering_of_pic_nums_idc == 2)
+						m_cBitStream.UGolomb();
+					else if(reordering_of_pic_nums_idc != 3)
+						IF_FAILED_RETURN(E_FAIL);
+
+				}
 			}
-			while(m_Picture.slice.vReorderedList[1][iIndex].reordering_of_pic_nums_idc != 3);
+			while(reordering_of_pic_nums_idc != 3);
 		}
 	}
 
@@ -959,4 +989,39 @@ void CH264NaluParser::ScalingList(const int iSizeOfScalingList, UCHAR* pScalingL
 		pScalingList[i] = (UCHAR)((nextScale == 0) ? lastScale : nextScale);
 		lastScale = pScalingList[i];
 	}
+}
+
+HRESULT CH264NaluParser::RemoveEmulationPreventionByte(CMFBuffer& pBuffer, int* piDecrease, const DWORD dwNaluSize){
+
+	HRESULT hr = S_OK;
+	DWORD dwValue;
+	DWORD dwIndex = 0;
+	BYTE* pData = pBuffer.GetStartBuffer();
+
+	assert(dwIndex < dwNaluSize);
+	pData += dwIndex;
+
+	while(dwIndex < (dwNaluSize - *piDecrease)){
+
+		dwValue = MAKE_DWORD(pData);
+
+		if(dwValue == 0x00000300 || dwValue == 0x00000301 || dwValue == 0x00000302 || dwValue == 0x00000303){
+
+			BYTE* pDataTmp = pBuffer.GetStartBuffer();
+
+			memcpy(pDataTmp + (dwIndex + 2), pDataTmp + (dwIndex + 3), pBuffer.GetBufferSize() - (dwIndex + 2));
+			IF_FAILED_RETURN(pBuffer.DecreaseEndPosition());
+			*piDecrease += 1;
+
+			dwIndex += 3;
+			pData += 3;
+		}
+		else
+		{
+			dwIndex += 1;
+			pData += 1;
+		}
+	}
+
+	return hr;
 }

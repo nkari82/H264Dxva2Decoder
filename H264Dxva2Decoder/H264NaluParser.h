@@ -40,6 +40,7 @@ private:
 	void ScalingListSpsAll(SPS_DATA*);
 	void ScalingListPpsAll(PPS_DATA*, const BOOL, const BOOL);
 	void ScalingList(const int, UCHAR*, const UCHAR*, const UCHAR*);
+	HRESULT RemoveEmulationPreventionByte(CMFBuffer&, int*, const DWORD);
 };
 
 #endif

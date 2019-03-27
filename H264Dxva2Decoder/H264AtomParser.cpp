@@ -1355,7 +1355,7 @@ HRESULT CH264AtomParser::ParseVideoConfigDescriptor(CMFLightBuffer** ppConfig, c
 		iCurrentPos += wParameterSetLength;
 	}
 
-	RemoveEmulationPreventionByte(pConfig, &iDecrease, 0);
+	IF_FAILED_RETURN(RemoveEmulationPreventionByte(pConfig, &iDecrease, 0));
 
 	IF_FAILED_RETURN(iDecrease < (iCurrentPos + 4) ? S_OK : E_UNEXPECTED);
 	iCurrentPos -= iDecrease;
@@ -1393,7 +1393,7 @@ HRESULT CH264AtomParser::ParseVideoConfigDescriptor(CMFLightBuffer** ppConfig, c
 		iCurrentPos += wParameterSetLength;
 	}
 
-	RemoveEmulationPreventionByte(pConfig, &iDecrease, dwLenght);
+	IF_FAILED_RETURN(RemoveEmulationPreventionByte(pConfig, &iDecrease, dwLenght));
 
 	IF_FAILED_RETURN(iDecrease < (iCurrentPos + 4) ? S_OK : E_UNEXPECTED);
 	iCurrentPos -= iDecrease;
@@ -1416,10 +1416,11 @@ HRESULT CH264AtomParser::ParseVideoConfigDescriptor(CMFLightBuffer** ppConfig, c
 	return hr;
 }
 
-void CH264AtomParser::RemoveEmulationPreventionByte(CMFLightBuffer* pConfig, int* piDecrease, const DWORD dwPosition){
+HRESULT CH264AtomParser::RemoveEmulationPreventionByte(CMFLightBuffer* pConfig, int* piDecrease, const DWORD dwPosition){
 
 	assert(pConfig);
 
+	HRESULT hr = S_OK;
 	DWORD dwValue;
 	DWORD dwIndex = dwPosition;
 	const DWORD dwSize = pConfig->GetBufferSize();
@@ -1438,7 +1439,7 @@ void CH264AtomParser::RemoveEmulationPreventionByte(CMFLightBuffer* pConfig, int
 			BYTE* pDataTmp = pConfig->GetBuffer();
 
 			memcpy(pDataTmp + (dwIndex + 2), pDataTmp + (dwIndex + 3), pConfig->GetBufferSize() - (dwIndex + 2));
-			pConfig->DecreaseEndPosition();
+			IF_FAILED_RETURN(pConfig->DecreaseEndPosition());
 			*piDecrease += 1;
 
 			dwIndex += 3;
@@ -1450,6 +1451,8 @@ void CH264AtomParser::RemoveEmulationPreventionByte(CMFLightBuffer* pConfig, int
 			pData += 1;
 		}
 	}
+
+	return hr;
 }
 
 const vector<CH264AtomParser::SAMPLE_INFO>* CH264AtomParser::GetSamples(const DWORD dwTrackId) const{
