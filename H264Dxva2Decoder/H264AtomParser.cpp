@@ -219,6 +219,7 @@ HRESULT CH264AtomParser::GetVideoFrameRate(const DWORD dwTrackId, UINT* puiNumer
 
 	IF_FAILED_RETURN(ui64Time ? S_OK : E_FAIL);
 	IF_FAILED_RETURN(MFAverageTimePerFrameToFrameRate(ui64Time, puiNumerator, puiDenominator));
+	IF_FAILED_RETURN(*puiDenominator == 0 || ((*puiNumerator / *puiDenominator) == 0) ? E_FAIL : S_OK);
 
 	return hr;
 }
