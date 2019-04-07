@@ -18,20 +18,18 @@ public:
 	CDxva2Decoder();
 	~CDxva2Decoder(){ OnRelease(); }
 
-	HRESULT InitDXVA2(const SPS_DATA&, const UINT, const UINT, const UINT, const UINT);
+	HRESULT InitDXVA2(const HWND, const SPS_DATA&, const UINT, const UINT, const UINT, const UINT);
 	void OnRelease();
+	void Reset();
 	HRESULT DecodeFrame(CMFBuffer&, const PICTURE_INFO&, const LONGLONG&, const int);
-	HRESULT DisplayFrame();
+	HRESULT RenderFrame();
+	HRESULT RenderBlackFrame();
 	HRESULT AddSliceShortInfo(const int, const DWORD);
 	void ClearPresentation(){ m_dqPicturePresentation.clear(); }
 	DWORD PictureToDisplayCount() const{ return (DWORD)m_dqPicturePresentation.size(); }
 	void SetCurrentNalu(const NAL_UNIT_TYPE eNalUnitType, const BYTE btNalRefIdc){ m_eNalUnitType = eNalUnitType; m_btNalRefIdc = btNalRefIdc; }
 
 private:
-
-	// Window
-	HINSTANCE m_hInst;
-	HWND      m_hWnd;
 
 	// DirectX9Ex
 	IDirect3D9Ex* m_pD3D9Ex;
@@ -82,8 +80,15 @@ private:
 	INT m_iPrevTopFieldOrderCount;
 	NAL_UNIT_TYPE m_eNalUnitType;
 	BYTE m_btNalRefIdc;
+#ifdef USE_DXVA2_SURFACE_INDEX
+	struct DXVA2_SURFACE_INDEX{
 
-	HRESULT InitForm(const UINT, const UINT);
+		BOOL bUsed;
+		BOOL bNalRef;
+	};
+	DXVA2_SURFACE_INDEX g_Dxva2SurfaceIndex[NUM_DXVA2_SURFACE];
+#endif
+
 	HRESULT InitDecoderService();
 	HRESULT InitVideoDecoder(const SPS_DATA&);
 	void InitDxva2Struct(const SPS_DATA&);
@@ -92,9 +97,6 @@ private:
 	HRESULT AddNalUnitBufferPadding(CMFBuffer&, const UINT);
 	void HandlePOC(const DWORD, const PICTURE_INFO&, const LONGLONG&);
 	void ErasePastFrames(const LONGLONG&);
-
-	// Dxva2Decoder_DisplayFrame.cpp
-	HRESULT RenderFrame();
 	HRESULT InitVideoProcessor();
 	HRESULT ConfigureVideoProcessor();
 };

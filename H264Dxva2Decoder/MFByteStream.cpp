@@ -285,6 +285,8 @@ HRESULT CMFByteStream::Seek(const LONG lDistance){
 
 	IF_FAILED_RETURN(m_hFile == INVALID_HANDLE_VALUE ? E_UNEXPECTED : S_OK);
 
+	SetLastError(0);
+
 	DWORD dwPosition = SetFilePointer(m_hFile, lDistance, NULL, FILE_CURRENT);
 
 	IF_FAILED_RETURN(dwPosition == INVALID_SET_FILE_POINTER || GetLastError() != NO_ERROR ? E_FAIL : S_OK);
@@ -301,6 +303,8 @@ HRESULT CMFByteStream::SeekHigh(LARGE_INTEGER liDistance){
 	AutoLock lock(m_CriticSection);
 
 	IF_FAILED_RETURN(m_hFile == INVALID_HANDLE_VALUE ? E_UNEXPECTED : S_OK);
+
+	SetLastError(0);
 
 	DWORD dwPosition = SetFilePointer(m_hFile, liDistance.LowPart, &liDistance.HighPart, FILE_CURRENT);
 
@@ -319,6 +323,8 @@ HRESULT CMFByteStream::SeekEnd(const LONG lDistance){
 
 	IF_FAILED_RETURN(m_hFile == INVALID_HANDLE_VALUE ? E_UNEXPECTED : S_OK);
 
+	SetLastError(0);
+
 	DWORD dwPosition = SetFilePointer(m_hFile, -lDistance, NULL, FILE_END);
 
 	IF_FAILED_RETURN(dwPosition == INVALID_SET_FILE_POINTER || GetLastError() != NO_ERROR ? E_FAIL : S_OK);
@@ -335,6 +341,8 @@ HRESULT CMFByteStream::Reset(){
 	AutoLock lock(m_CriticSection);
 
 	IF_FAILED_RETURN(m_hFile == INVALID_HANDLE_VALUE ? E_UNEXPECTED : S_OK);
+
+	SetLastError(0);
 
 	DWORD dwPosition = SetFilePointer(m_hFile, 0, NULL, FILE_BEGIN);
 

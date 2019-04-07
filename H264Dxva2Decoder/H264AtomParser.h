@@ -14,10 +14,12 @@ public:
 	HRESULT Initialize(LPCWSTR);
 	HRESULT ParseMp4();
 	void Delete();
+	void Reset();
 	HRESULT GetNextSample(const DWORD, BYTE**, DWORD*, LONGLONG*);
 	HRESULT GetVideoConfigDescriptor(const DWORD, BYTE**, DWORD*);
 	HRESULT GetVideoFrameRate(const DWORD, UINT*, UINT*);
 	HRESULT GetFirstVideoStream(DWORD*);
+	HRESULT SeekVideo(const MFTIME, const DWORD);
 	const int GetNaluLenghtSize() const{ return m_iNaluLenghtSize; }
 
 private:
@@ -78,6 +80,7 @@ private:
 		CMFLightBuffer* pConfig;
 	};
 
+	CriticSection m_CriticSection;
 	CMFByteStream* m_pByteStream;
 	CMFBuffer m_cMp4ParserBuffer;
 	int m_DisplayMatrix[3][3];
@@ -116,6 +119,7 @@ private:
 
 	const vector<SAMPLE_INFO>* GetSamples(const DWORD) const;
 	CMFLightBuffer* GetConfig(const DWORD) const;
+	HRESULT SeekVideo(const TRACK_INFO&, const MFTIME);
 };
 
 #endif

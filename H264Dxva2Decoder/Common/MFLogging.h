@@ -12,7 +12,7 @@ public:
 
 	static void Initialize(){
 		_CrtSetReportMode(_CRT_WARN, _CRTDBG_MODE_DEBUG);
-		//_CrtSetBreakAlloc(171);
+		//_CrtSetBreakAlloc(157);
 	}
 
 	static void Trace(const WCHAR* sFormatString, ...){
@@ -80,8 +80,8 @@ inline HRESULT _LOG_HRESULT(HRESULT hr, const char* sFileName, long lLineNo){
 	return hr;
 }
 
-#define LOG_HRESULT(hr)      _LOG_HRESULT(hr, __FILE__, __LINE__)
-#define LOG_LAST_ERROR()     _LOG_HRESULT(HRESULT_FROM_WIN32(GetLastError()), __FILE__, __LINE__)
+#define LOG_HRESULT(hr)		_LOG_HRESULT(hr, __FILE__, __LINE__)
+#define LOG_LAST_ERROR()	_LOG_HRESULT(HRESULT_FROM_WIN32(GetLastError()), __FILE__, __LINE__)
 
 #ifdef MF_USE_LOGREFCOUNT
 #define TRACE_REFCOUNT(x) DebugLog::Trace x

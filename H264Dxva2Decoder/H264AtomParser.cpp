@@ -105,6 +105,11 @@ void CH264AtomParser::Delete(){
 	m_iNaluLenghtSize = 0;
 }
 
+void CH264AtomParser::Reset(){
+
+	m_dwCurrentSample = 0;
+}
+
 HRESULT CH264AtomParser::GetNextSample(const DWORD dwTrackId, BYTE** ppData, DWORD* pSize, LONGLONG* pllTime){
 
 	HRESULT hr;
@@ -113,6 +118,8 @@ HRESULT CH264AtomParser::GetNextSample(const DWORD dwTrackId, BYTE** ppData, DWO
 	DWORD dwOffset;
 
 	IF_FAILED_RETURN(ppData && pSize ? S_OK : E_FAIL);
+
+	AutoLock lock(m_CriticSection);
 
 	const vector<SAMPLE_INFO>* vSamples = GetSamples(dwTrackId);
 
@@ -226,6 +233,24 @@ HRESULT CH264AtomParser::GetFirstVideoStream(DWORD* pdwTrackId){
 
 			*pdwTrackId = TrackInfo.dwTrackId;
 			hr = S_OK;
+			break;
+		}
+	}
+
+	return hr;
+}
+
+HRESULT CH264AtomParser::SeekVideo(const MFTIME llDuration, const DWORD dwTrackId){
+
+	HRESULT hr = E_FAIL;
+
+	AutoLock lock(m_CriticSection);
+
+	for(auto& TrackInfo : m_vTrackInfo){
+
+		if(TrackInfo.dwTrackId == dwTrackId){
+
+			hr = SeekVideo(TrackInfo, llDuration);
 			break;
 		}
 	}
@@ -1479,4 +1504,63 @@ CMFLightBuffer* CH264AtomParser::GetConfig(const DWORD dwTrackId) const{
 	}
 
 	return NULL;
+}
+
+HRESULT CH264AtomParser::SeekVideo(const TRACK_INFO& TrackInfo, const MFTIME llDuration){
+
+	if(m_dwCurrentSample >= TrackInfo.vSamples.size()){
+		return S_FALSE;
+	}
+
+	vector<SAMPLE_INFO>::const_iterator it = TrackInfo.vSamples.begin() + m_dwCurrentSample;
+
+	MFTIME llNewTime = it->llTime + llDuration;
+	DWORD dwPrevIFrame = 0;
+	DWORD dwNextIFrame = 0;
+
+	// We should use vSyncSamples
+	while(++it != TrackInfo.vSamples.end()){
+
+		m_dwCurrentSample++;
+
+		if(it->bKeyFrame)
+			dwPrevIFrame = m_dwCurrentSample;
+
+		if(it->llTime >= llNewTime)
+			break;
+	}
+
+	if(it == TrackInfo.vSamples.end())
+		return S_FALSE;
+
+	dwNextIFrame = m_dwCurrentSample;
+
+	while(++it != TrackInfo.vSamples.end()){
+
+		dwNextIFrame++;
+
+		if(it->bKeyFrame)
+			break;
+	}
+
+	if(dwPrevIFrame == 0 && dwNextIFrame == 0)
+		return S_FALSE;
+
+	if(dwPrevIFrame != 0 && dwNextIFrame != 0){
+
+		if(m_dwCurrentSample - dwPrevIFrame > dwNextIFrame - m_dwCurrentSample)
+			m_dwCurrentSample = dwNextIFrame;
+		else
+			m_dwCurrentSample = dwPrevIFrame;
+	}
+	else if(dwPrevIFrame != 0){
+
+		m_dwCurrentSample = dwPrevIFrame;
+	}
+	else{
+
+		m_dwCurrentSample = dwNextIFrame;
+	}
+
+	return S_OK;
 }

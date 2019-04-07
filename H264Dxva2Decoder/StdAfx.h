@@ -8,10 +8,10 @@
 #define WIN32_LEAN_AND_MEAN
 #define STRICT
 
+//----------------------------------------------------------------------------------------------
+// Pragma
 #pragma comment(lib, "mfplat")
 #pragma comment(lib, "shlwapi")
-#pragma comment(lib, "mfuuid")
-#pragma comment(lib, "strmiids")
 #pragma comment(lib, "dxva2")
 #pragma comment(lib, "d3d9")
 
@@ -26,6 +26,8 @@
 #ifdef _DEBUG
 #include <crtdbg.h>
 #endif
+#include <commdlg.h>
+#include <Shellapi.h>
 #include <initguid.h>
 #include <Shlwapi.h>
 #include <mfapi.h>
@@ -40,17 +42,18 @@
 
 //----------------------------------------------------------------------------------------------
 // STL
-#include <deque>
-using std::deque;
-#include <string>
-using std::wstring;
 #include <vector>
 using std::vector;
+#include <string>
+using std::wstring;
+#include <deque>
+using std::deque;
 
 //----------------------------------------------------------------------------------------------
 // Common Project Files
 #ifdef _DEBUG
 #define MF_USE_LOGGING 1
+//#define MF_USE_LOGREFCOUNT
 //#define MF_TRACE_BYTESTREAM
 #else
 #define MF_USE_LOGGING 0
@@ -60,23 +63,36 @@ using std::vector;
 #include ".\Common\MFTrace.h"
 #include ".\Common\MFLogging.h"
 #include ".\Common\MFTExternTrace.h"
-#include ".\Common\MFReadParam.h"
-#include ".\Common\MFCriticSection.h"
 #include ".\Common\MFBuffer.h"
 #include ".\Common\MFLightBuffer.h"
+#include ".\Common\MFCriticSection.h"
+#include ".\Common\MFReadParam.h"
+
+// Optimize the use of DXVA2 surfaces
+// I need to check with more movie files before including it
+#define USE_DXVA2_SURFACE_INDEX
 
 //----------------------------------------------------------------------------------------------
 // Project Files
+#include "Resource.h"
+#include "PlayerDefinition.h"
 #include "Mp4Definition.h"
 #include "H264Definition.h"
-#include "BitStream.h"
 #include "MFByteStream.h"
+#include "BitStream.h"
+#include "WindowMessage.h"
 #include "H264AtomParser.h"
 #include "H264NaluParser.h"
 #include "Dxva2Decoder.h"
+#include "Player.h"
+#include "WindowsForm.h"
 
-#define WINDOWAPPLICATION_CLASS L"WindowApplication"
+#define WINDOWSFORM_CLASS L"H264Dxva2Decoder 1.0.0.0"
 
-extern BOOL g_bStopApplication;
+// Workaround for Intel GPU : nalu buffer with start code 0x00,0x00,0x00,0x01 are not handled.
+// This workaround will not be enough if nalu contains more than one sub-slice.
+//#define USE_WORKAROUND_FOR_INTEL_GPU
+
+//#define HANDLE_DIRECTX_ERROR_UNDOCUMENTED
 
 #endif

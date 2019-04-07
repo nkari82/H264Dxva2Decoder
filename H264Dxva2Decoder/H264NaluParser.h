@@ -11,6 +11,7 @@ public:
 	CH264NaluParser();
 	~CH264NaluParser(){}
 
+	void Reset();
 	HRESULT ParseVideoConfigDescriptor(const BYTE*, const DWORD);
 	HRESULT ParseNaluHeader(CMFBuffer&, DWORD*);
 

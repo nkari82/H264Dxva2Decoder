@@ -8,8 +8,8 @@ class CMFReadParam : public IUnknown{
 
 public:
 
-	CMFReadParam(BYTE* pData, ULONG ulToRead) : m_nRefCount(1), m_pData(pData), m_ulToRead(ulToRead){}
-	CMFReadParam() : m_nRefCount(1), m_pData(NULL), m_ulToRead(0){}
+	CMFReadParam(BYTE* pData, ULONG ulToRead) : m_nRefCount(1), m_pData(pData), m_ulToRead(ulToRead){ /*LOG_HRESULT(MFLockPlatform());*/ }
+	CMFReadParam() : m_nRefCount(1), m_pData(NULL), m_ulToRead(0){ /*LOG_HRESULT(MFUnlockPlatform());*/ }
 
 	STDMETHODIMP QueryInterface(REFIID riid, void** ppv){
 

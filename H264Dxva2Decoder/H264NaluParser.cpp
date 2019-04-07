@@ -10,6 +10,15 @@ CH264NaluParser::CH264NaluParser() : m_dwWidth(0), m_dwHeight(0), m_iNaluLenghtS
 	ZeroMemory(&m_Picture, sizeof(PICTURE_INFO));
 }
 
+void CH264NaluParser::Reset(){
+
+	m_dwWidth = 0;
+	m_dwHeight = 0;
+	m_iNaluLenghtSize = 0;
+
+	ZeroMemory(&m_Picture, sizeof(PICTURE_INFO));
+}
+
 HRESULT CH264NaluParser::ParseVideoConfigDescriptor(const BYTE* pData, const DWORD dwSize){
 
 	HRESULT hr;
@@ -1007,9 +1016,7 @@ HRESULT CH264NaluParser::RemoveEmulationPreventionByte(CMFBuffer& pBuffer, int* 
 
 		if(dwValue == 0x00000300 || dwValue == 0x00000301 || dwValue == 0x00000302 || dwValue == 0x00000303){
 
-			BYTE* pDataTmp = pBuffer.GetStartBuffer();
-
-			memcpy(pDataTmp + (dwIndex + 2), pDataTmp + (dwIndex + 3), pBuffer.GetBufferSize() - (dwIndex + 2));
+			memcpy(pData + 2, pData + 3, pBuffer.GetBufferSize() - (dwIndex + 2));
 			IF_FAILED_RETURN(pBuffer.DecreaseEndPosition());
 			*piDecrease += 1;
 

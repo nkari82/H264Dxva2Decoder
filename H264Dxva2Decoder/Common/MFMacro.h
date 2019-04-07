@@ -69,6 +69,14 @@ template<class T> inline void SAFE_DELETE_ARRAY(T*& p){
 #endif
 #endif
 
+#ifndef CLOSE_HANDLE_NULL_IF
+#if (_DEBUG && MF_USE_LOGGING)
+#define CLOSE_HANDLE_NULL_IF(h) if(h != NULL){ if(CloseHandle(h) == FALSE){ LOG_LAST_ERROR(); } h = NULL; }
+#else
+#define CLOSE_HANDLE_NULL_IF(h) if(h != NULL){ CloseHandle(h); h = NULL; }
+#endif
+#endif
+
 #ifndef RETURN_STRING
 #define RETURN_STRING(x) case x: return L#x
 #endif
