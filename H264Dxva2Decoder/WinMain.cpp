@@ -12,6 +12,7 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE, LPSTR, int){
 
 	if(FAILED(pWindowsForm->InitWindowsForm(hInst))){
 
+		LOG_HRESULT(pWindowsForm->Shutdown());
 		SAFE_RELEASE(pWindowsForm);
 		return -1;
 	}
@@ -26,7 +27,6 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE, LPSTR, int){
 	}
 
 	LOG_HRESULT(pWindowsForm->Shutdown());
-
 	SAFE_RELEASE(pWindowsForm);
 
 	return static_cast<int>(msg.wParam);

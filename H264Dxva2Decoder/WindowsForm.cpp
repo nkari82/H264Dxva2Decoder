@@ -15,12 +15,16 @@ CWindowsForm::CWindowsForm() :
 	m_hWnd(NULL),
 	m_hMenu(NULL),
 	m_nRefCount(1),
-	m_pPlayer(NULL)
+	m_pPlayer(NULL),
+	m_bPlayerState(STATE_STOPPING),
+	m_bWasPlaying(FALSE)
 {
 	m_pWindowsForm = this;
 }
 
 CWindowsForm::~CWindowsForm(){
+
+	m_cDxva2WindowsForm.Close();
 
 	if(IsWindow(m_hWnd)){
 		DestroyWindow(m_hWnd);
@@ -66,6 +70,7 @@ HRESULT CWindowsForm::Invoke(IMFAsyncResult* pResult){
 	HRESULT hr = S_OK;
 	IUnknown* pUnk = NULL;
 
+	// todo : return error
 	assert(pResult);
 	assert(SUCCEEDED(pResult->GetStatus()));
 
@@ -73,9 +78,9 @@ HRESULT CWindowsForm::Invoke(IMFAsyncResult* pResult){
 
 	if(pUnk != NULL){
 
-		CWindowMessage* pWindowMessage = static_cast<CWindowMessage*>(pUnk);
+		CCallbackMessage* pMessage = static_cast<CCallbackMessage*>(pUnk);
 
-		OnWindowMessage(pWindowMessage->GetWindowMessage());
+		OnWindowMessage(pMessage->GetCallbackMessage());
 
 		SAFE_RELEASE(pUnk);
 	}
@@ -96,12 +101,12 @@ HRESULT CWindowsForm::InitWindowsForm(const HINSTANCE hInst){
 	WndClassEx.cbClsExtra = 0L;
 	WndClassEx.cbWndExtra = 0L;
 	WndClassEx.hInstance = hInst;
-	WndClassEx.hIcon = NULL;
+	WndClassEx.hIcon = LoadIcon(hInst, MAKEINTRESOURCE(IDI_ICON));
 	WndClassEx.hCursor = LoadCursor(NULL, IDC_ARROW);
 	WndClassEx.hbrBackground = NULL;
 	WndClassEx.lpszMenuName = MAKEINTRESOURCE(IDR_MENU);
 	WndClassEx.lpszClassName = WINDOWSFORM_CLASS;
-	WndClassEx.hIconSm = NULL;
+	WndClassEx.hIconSm = LoadIcon(hInst, MAKEINTRESOURCE(IDI_ICON));
 
 	if(!RegisterClassEx(&WndClassEx)){
 		return hr;
@@ -118,67 +123,53 @@ HRESULT CWindowsForm::InitWindowsForm(const HINSTANCE hInst){
 		return hr;
 	}
 
-	IF_FAILED_RETURN(InitMediaFoundation());
+	IF_FAILED_RETURN(InitPlayer());
 
-	ShowWindow(m_hWnd, SW_SHOWNORMAL);
-	UpdateWindow(m_hWnd);
+	GetWindowRect(m_hWnd, &m_rcLastWindowPos);
 
 	m_hMenu = GetMenu(m_hWnd);
 
-	/*RECT rc;
-	GetClientRect(m_hWnd, &rc);*/
+	ShowWindow(m_hWnd, SW_SHOWNORMAL);
+	UpdateWindow(m_hWnd);
 
 	return S_OK;
 }
 
 HRESULT CWindowsForm::Shutdown(){
 
-	HRESULT hr;
+	HRESULT hr = S_OK;
 
-#ifdef _DEBUG
 	if(m_pPlayer){
 
-		assert(m_pPlayer->IsShutdown());
+		LOG_HRESULT(hr = m_pPlayer->Shutdown());
+		SAFE_RELEASE(m_pPlayer);
 	}
-#endif
 
-	SAFE_RELEASE(m_pPlayer);
-
-	LOG_HRESULT(hr = MFShutdown());
+	LOG_HRESULT(MFShutdown());
 
 	CoUninitialize();
 
 	return hr;
 }
 
-HRESULT CWindowsForm::InitMediaFoundation(){
+HRESULT CWindowsForm::InitPlayer(){
 
-	HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+	HRESULT hr = S_OK;
+	HRESULT hrInitPlayer = S_OK;
 
-	if(SUCCEEDED(hr))
-		hr = MFStartup(MF_VERSION, MFSTARTUP_LITE);
+	try{
 
-	return hr;
-}
+		IF_FAILED_THROW(CoInitializeEx(NULL, COINIT_MULTITHREADED | COINIT_DISABLE_OLE1DDE));
+		IF_FAILED_THROW(MFStartup(MF_VERSION, MFSTARTUP_LITE));
 
-HRESULT CWindowsForm::OnOpenFile(LPCWSTR lpwszFile){
+		m_pPlayer = new (std::nothrow)CPlayer(hrInitPlayer, this);
 
-	HRESULT hr;
+		IF_FAILED_THROW(m_pPlayer == NULL ? E_OUTOFMEMORY : S_OK);
+		IF_FAILED_THROW(hrInitPlayer);
 
-	if(m_pPlayer == NULL){
-
-		HRESULT hrInit = S_OK;
-		m_pPlayer = new (std::nothrow)CPlayer(hrInit, this);
-
-		IF_FAILED_RETURN(hrInit);
-		IF_FAILED_RETURN(m_pPlayer == NULL ? E_OUTOFMEMORY : S_OK);
+		IF_FAILED_THROW(m_pPlayer->Init());
 	}
-	else{
-
-		IF_FAILED_RETURN(m_pPlayer->Close());
-	}
-
-	IF_FAILED_RETURN(m_pPlayer->OpenFile(m_hWnd, lpwszFile));
+	catch(HRESULT){}
 
 	return hr;
 }
@@ -191,22 +182,70 @@ void CWindowsForm::OnExit(){
 	}
 }
 
-void CWindowsForm::OnPaint(const HWND hWnd){
+HRESULT CWindowsForm::OnOpenFile(LPCWSTR lpwszFile){
 
-	PAINTSTRUCT ps;
-	HDC hdc = BeginPaint(hWnd, &ps);
+	HRESULT hr;
 
-	if(m_pPlayer == NULL){
+	IF_FAILED_RETURN(m_pPlayer ? S_OK : E_UNEXPECTED);
+	IF_FAILED_RETURN(m_pPlayer->Close());
+	IF_FAILED_RETURN(m_pPlayer->OpenFile(m_hWnd, lpwszFile));
 
-		RECT rc;
-		GetClientRect(hWnd, &rc);
-		FillRect(hdc, &rc, (HBRUSH)COLOR_WINDOW + 1);
-	}
+	UpdateDxva2Settings();
 
-	EndPaint(hWnd, &ps);
+	IF_FAILED_RETURN(m_pPlayer->Play());
+
+	return hr;
 }
 
-void CWindowsForm::OnKeyDown(WPARAM wParam){
+void CWindowsForm::OnPlay(){
+
+	if(m_pPlayer == NULL)
+		return;
+
+	m_pPlayer->Play();
+}
+
+void CWindowsForm::OnPause(){
+
+	if(m_pPlayer == NULL)
+		return;
+
+	m_pPlayer->Pause();
+}
+
+void CWindowsForm::OnStop(){
+
+	if(m_pPlayer == NULL)
+		return;
+
+	m_pPlayer->Stop();
+}
+
+void CWindowsForm::OnStep(){
+
+	if(m_pPlayer == NULL)
+		return;
+
+	m_pPlayer->Step();
+}
+
+void CWindowsForm::OnPlayPause(){
+
+	if(m_pPlayer == NULL)
+		return;
+
+	m_pPlayer->PlayPause();
+}
+
+void CWindowsForm::OnSeekVideo(const int iDurationToSeek){
+
+	if(m_pPlayer == NULL)
+		return;
+
+	m_pPlayer->SeekVideo(iDurationToSeek * ONE_MINUTE);
+}
+
+void CWindowsForm::OnKeyDown(const WPARAM wParam){
 
 	switch(wParam){
 
@@ -221,6 +260,8 @@ void CWindowsForm::OnKeyDown(WPARAM wParam){
 		case VK_NUMPAD8: OnSeekVideo(8); break;
 		case VK_NUMPAD9: OnSeekVideo(9); break;
 		case VK_SPACE: OnPlayPause(); break;
+		case VK_RIGHT: OnStep(); break;
+		case F_KEY: OnFullScreen(TRUE); break;
 		case P_KEY: OnPlay(); break;
 		case S_KEY: OnStop(); break;
 		case VK_ESCAPE: OnFullScreen(FALSE); break;
@@ -254,6 +295,11 @@ BOOL CWindowsForm::OnCommand(const DWORD dwCmd){
 			OnChooseFile();
 			break;
 
+		case ID_DXVA2PARAMETERS_SETTINGS:
+			m_cDxva2WindowsForm.Open(m_hInst, m_hWnd);
+			UpdateDxva2Settings();
+			break;
+
 		default:
 			bNoCmd = TRUE;
 	}
@@ -261,7 +307,124 @@ BOOL CWindowsForm::OnCommand(const DWORD dwCmd){
 	return bNoCmd;
 }
 
-void CWindowsForm::OnDrop(WPARAM wParam){
+void CWindowsForm::OnSysCommand(const WPARAM wParam){
+
+	if(wParam == SC_MINIMIZE || wParam == SC_MAXIMIZE){
+
+		m_bWasPlaying = (m_bPlayerState == STATE_PLAYING);
+		if(m_bWasPlaying)
+			OnPause();
+	}
+	else if(wParam == SC_RESTORE){
+
+		if(m_bWasPlaying)
+			OnPlay();
+	}
+}
+
+void CWindowsForm::OnPaint(const HWND hWnd){
+
+	PAINTSTRUCT ps;
+	HDC hdc = BeginPaint(hWnd, &ps);
+
+	if(m_pPlayer && m_bPlayerState != STATE_STOPPING){
+
+		if(m_bPlayerState == STATE_PAUSING){
+
+			m_pPlayer->RepaintVideo();
+		}
+	}
+	else{
+
+		RECT rc;
+
+		GetClientRect(hWnd, &rc);
+		FillRect(hdc, &rc, (HBRUSH)COLOR_WINDOW + 1);
+	}
+
+	EndPaint(hWnd, &ps);
+}
+
+void CWindowsForm::OnFullScreen(const BOOL bToggleFullScreen){
+
+	long lStyleEx;
+	long lstyle;
+	BOOL bCursor;
+	RECT rc;
+	HWND hTop;
+
+	if(bToggleFullScreen && GetWindowLongPtr(m_hWnd, GWL_EXSTYLE) != WS_EX_TOPMOST){
+
+		// Remember the last position
+		if(GetWindowRect(m_hWnd, &m_rcLastWindowPos) == FALSE)
+			return;
+
+		lStyleEx = WS_EX_TOPMOST;
+		lstyle = 0;
+		bCursor = FALSE;
+		hTop = HWND_TOPMOST;
+
+		rc.left = 0;
+		rc.top = 0;
+		// We should manage multiple monitors, if present
+		rc.right = GetSystemMetrics(SM_CXSCREEN);
+		rc.bottom = GetSystemMetrics(SM_CYSCREEN);
+
+		SetMenu(m_hWnd, NULL);
+	}
+	else{
+
+		if(GetWindowLongPtr(m_hWnd, GWL_EXSTYLE) == WS_EX_ACCEPTFILES)
+			return;
+
+		lStyleEx = WS_EX_ACCEPTFILES;
+		lstyle = WS_OVERLAPPEDWINDOW;
+		bCursor = TRUE;
+		hTop = HWND_NOTOPMOST;
+
+		rc.left = m_rcLastWindowPos.left;
+		rc.top = m_rcLastWindowPos.top;
+		rc.right = m_rcLastWindowPos.right - m_rcLastWindowPos.left;
+		rc.bottom = m_rcLastWindowPos.bottom - m_rcLastWindowPos.top;
+
+		SetMenu(m_hWnd, m_hMenu);
+	}
+
+	SetWindowLongPtr(m_hWnd, GWL_EXSTYLE, lStyleEx);
+	SetWindowLongPtr(m_hWnd, GWL_STYLE, lstyle);
+
+	ShowCursor(bCursor);
+
+	SetWindowPos(m_hWnd, hTop, rc.left, rc.top, rc.right, rc.bottom, SWP_SHOWWINDOW);
+}
+
+void CWindowsForm::OnWindowMessage(const int iMessage){
+
+	switch(iMessage){
+
+		case WND_MSG_PLAYING:
+			SetWindowText(m_hWnd, L"H264Dxva2Decoder 1.1.0.0 : playing");
+			m_bPlayerState = STATE_PLAYING;
+			break;
+
+		case WND_MSG_PAUSING:
+			SetWindowText(m_hWnd, L"H264Dxva2Decoder 1.1.0.0 : pausing");
+			m_bPlayerState = STATE_PAUSING;
+			break;
+
+		case WND_MSG_STOPPING:
+			SetWindowText(m_hWnd, L"H264Dxva2Decoder 1.1.0.0 : stopping");
+			m_bPlayerState = STATE_STOPPING;
+			break;
+
+		case WND_MSG_FINISH:
+			SetWindowText(m_hWnd, L"H264Dxva2Decoder 1.1.0.0 : finish");
+			m_bPlayerState = STATE_STOPPING;
+			break;
+	}
+}
+
+void CWindowsForm::OnDrop(const WPARAM wParam){
 
 	HDROP hDrop = (HDROP)wParam;
 	UINT uiFile = 0;
@@ -298,46 +461,6 @@ void CWindowsForm::OnDrop(WPARAM wParam){
 	}
 }
 
-void CWindowsForm::OnPlay(){
-
-	if(m_pPlayer == NULL)
-		return;
-
-	m_pPlayer->Play();
-}
-
-void CWindowsForm::OnPause(){
-
-	if(m_pPlayer == NULL)
-		return;
-
-	m_pPlayer->Pause();
-}
-
-void CWindowsForm::OnStop(){
-
-	if(m_pPlayer == NULL)
-		return;
-
-	m_pPlayer->Stop();
-}
-
-void CWindowsForm::OnPlayPause(){
-
-	if(m_pPlayer == NULL)
-		return;
-
-	m_pPlayer->PlayPause();
-}
-
-void CWindowsForm::OnSeekVideo(const int iDurationToSeek){
-
-	if(m_pPlayer == NULL)
-		return;
-
-	m_pPlayer->SeekVideo(iDurationToSeek * ONE_MINUTE);
-}
-
 void CWindowsForm::OnChooseFile(){
 
 	OPENFILENAME ofn;
@@ -347,13 +470,11 @@ void CWindowsForm::OnChooseFile(){
 
 	ofn.lStructSize = sizeof(OPENFILENAME);
 	ofn.hwndOwner = m_hWnd;
-	//ofn.lpstrFilter = szFilter;
 	ofn.nFilterIndex = 1;
 	ofn.lpstrFile = wszBuffer;
 	ofn.nMaxFile = MAX_PATH;
 	ofn.lpstrTitle = TEXT("Select video file");
 	ofn.Flags = OFN_HIDEREADONLY;
-	//ofn.lpstrDefExt = TEXT("WAV");
 
 	if(GetOpenFileName(&ofn)){
 
@@ -362,79 +483,33 @@ void CWindowsForm::OnChooseFile(){
 	}
 }
 
-void CWindowsForm::OnFullScreen(const BOOL bToggleFullScreen){
+void CWindowsForm::OnDxva2Settings(const UINT uiControlId, const INT iValue){
 
-	long lStyleEx;
-	long lstyle;
-	BOOL bCursor;
-	RECT rc;
-	HWND hTop;
+	if(m_pPlayer == NULL)
+		return;
 
-	if(bToggleFullScreen && GetWindowLongPtr(m_hWnd, GWL_EXSTYLE) != WS_EX_TOPMOST){
-
-		// Remember the last position
-		if(GetWindowRect(m_hWnd, &m_rcWindow) == FALSE)
-			return;
-
-		lStyleEx = WS_EX_TOPMOST;
-		lstyle = WS_OVERLAPPEDWINDOW & ~(WS_BORDER | WS_CAPTION | WS_THICKFRAME | WS_SYSMENU);
-		bCursor = FALSE;
-		hTop = HWND_TOPMOST;
-
-		rc.left = 0;
-		rc.top = 0;
-		// We should manage multiple monitors, if present
-		rc.right = GetSystemMetrics(SM_CXSCREEN);
-		rc.bottom = GetSystemMetrics(SM_CYSCREEN);
-
-		SetMenu(m_hWnd, NULL);
-	}
-	else{
-
-		if(GetWindowLongPtr(m_hWnd, GWL_EXSTYLE) == WS_EX_ACCEPTFILES)
-			return;
-
-		lStyleEx = WS_EX_ACCEPTFILES;
-		lstyle = WS_OVERLAPPEDWINDOW;
-		bCursor = TRUE;
-		hTop = HWND_NOTOPMOST;
-
-		rc.left = m_rcWindow.left;
-		rc.top = m_rcWindow.top;
-		rc.right = m_rcWindow.right - m_rcWindow.left;
-		rc.bottom = m_rcWindow.bottom - m_rcWindow.top;
-
-		SetMenu(m_hWnd, m_hMenu);
-	}
-
-	SetWindowLongPtr(m_hWnd, GWL_EXSTYLE, lStyleEx);
-	SetWindowLongPtr(m_hWnd, GWL_STYLE, lstyle);
-
-	ShowCursor(bCursor);
-
-	SetWindowPos(m_hWnd, hTop, rc.left, rc.top, rc.right, rc.bottom, SWP_FRAMECHANGED | SWP_SHOWWINDOW);
-
-	InvalidateRect(NULL, NULL, TRUE);
+	m_pPlayer->OnFilter(uiControlId, iValue);
 }
 
-void CWindowsForm::OnWindowMessage(const int iMessage){
+void CWindowsForm::OnResetDxva2Settings(){
 
-	switch(iMessage){
+	if(m_pPlayer == NULL)
+		return;
 
-		case WND_MSG_PLAYING:
-			SetWindowText(m_hWnd, L"H264Dxva2Decoder 1.0.0.0 : playing");
-			break;
+	if(SUCCEEDED(m_pPlayer->OnResetDxva2Settings()))
+		UpdateDxva2Settings();
+}
 
-		case WND_MSG_PAUSING:
-			SetWindowText(m_hWnd, L"H264Dxva2Decoder 1.0.0.0 : pausing");
-			break;
+void CWindowsForm::UpdateDxva2Settings(){
 
-		case WND_MSG_STOPPING:
-			SetWindowText(m_hWnd, L"H264Dxva2Decoder 1.0.0.0 : stopping");
-			break;
+	if(m_pPlayer == NULL)
+		return;
 
-		case WND_MSG_FINISH:
-			SetWindowText(m_hWnd, L"H264Dxva2Decoder 1.0.0.0 : finish");
-			break;
-	}
+	DXVAHD_FILTER_RANGE_DATA_EX Filters[7];
+	ZeroMemory(Filters, 7 * sizeof(DXVAHD_FILTER_RANGE_DATA_EX));
+
+	BOOL bUseBT709 = FALSE;
+
+	if(m_pPlayer->GetDxva2Settings(Filters, bUseBT709))
+		m_cDxva2WindowsForm.UpdateDxva2Settings(Filters, bUseBT709);
 }

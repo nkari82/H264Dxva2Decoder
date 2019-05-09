@@ -31,31 +31,38 @@ public:
 
 private:
 
+	volatile long m_nRefCount;
 	static CWindowsForm* m_pWindowsForm;
 	CPlayer* m_pPlayer;
-
 	HINSTANCE m_hInst;
 	HWND m_hWnd;
 	HMENU m_hMenu;
-	RECT m_rcWindow;
-	volatile long m_nRefCount;
+	RECT m_rcLastWindowPos;
+	PLAYER_STATE m_bPlayerState;
+	BOOL m_bWasPlaying;
+	CDxva2WindowsForm m_cDxva2WindowsForm;
 
 	// WindowsForm.cpp
-	HRESULT InitMediaFoundation();
-	HRESULT OnOpenFile(LPCWSTR);
+	HRESULT InitPlayer();
 	void OnExit();
-	void OnPaint(const HWND);
-	void OnKeyDown(WPARAM);
-	BOOL OnCommand(const DWORD);
-	void OnDrop(WPARAM);
+	HRESULT OnOpenFile(LPCWSTR);
 	void OnPlay();
 	void OnPause();
 	void OnStop();
+	void OnStep();
 	void OnPlayPause();
 	void OnSeekVideo(const int);
-	void OnChooseFile();
+	void OnKeyDown(const WPARAM);
+	BOOL OnCommand(const DWORD);
+	void OnSysCommand(const WPARAM);
+	void OnPaint(const HWND);
 	void OnFullScreen(const BOOL);
 	void OnWindowMessage(const int);
+	void OnDrop(const WPARAM);
+	void OnChooseFile();
+	void OnDxva2Settings(const UINT, const INT);
+	void OnResetDxva2Settings();
+	void UpdateDxva2Settings();
 };
 
 #endif
