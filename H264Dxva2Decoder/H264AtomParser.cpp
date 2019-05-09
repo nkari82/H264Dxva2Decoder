@@ -224,6 +224,29 @@ HRESULT CH264AtomParser::GetVideoFrameRate(const DWORD dwTrackId, UINT* puiNumer
 	return hr;
 }
 
+HRESULT CH264AtomParser::GetVideoDuration(const DWORD dwTrackId, MFTIME& llMovieDuration){
+
+	BOOL bMovieDuration = FALSE;
+
+	for(auto& TrackInfo : m_vTrackInfo){
+
+		if(TrackInfo.dwTrackId == dwTrackId){
+
+			const vector<SAMPLE_INFO>::const_reverse_iterator rit = TrackInfo.vSamples.rbegin();
+
+			if(rit != TrackInfo.vSamples.rend()){
+
+				llMovieDuration = rit->llTime + rit->llDuration;
+				bMovieDuration = TRUE;
+			}
+
+			break;
+		}
+	}
+
+	return bMovieDuration ? S_OK : E_FAIL;
+}
+
 HRESULT CH264AtomParser::GetFirstVideoStream(DWORD* pdwTrackId){
 
 	HRESULT hr = E_FAIL;
@@ -1024,7 +1047,7 @@ HRESULT CH264AtomParser::ParseSampleDescHeader(TRACK_INFO& TrackInfo, BYTE* pDat
 	// todo : if more than one STSD. For now just get the first
 	if(dwAtomCount > 1){
 
-		TRACE((L"error : dwAtomCount = %u", dwAtomCount));
+		TRACE((L"warning : more than one STSD = %lu", dwAtomCount));
 	}
 
 	pData += 4;
@@ -1083,7 +1106,7 @@ HRESULT CH264AtomParser::ParseSampleTimeHeader(vector<TIME_INFO>& vTimeSample, B
 	if(dwTimeSamples == 0)
 		return hr;
 
-	IF_FAILED_RETURN((dwTimeSamples > 0) && ((dwTimeSamples * 8) == (dwAtomSampleTimeSize - dwByteDone)) ? S_OK : E_FAIL);
+	IF_FAILED_RETURN((dwTimeSamples > 0) && ((dwTimeSamples * 8) <= (dwAtomSampleTimeSize - dwByteDone)) ? S_OK : E_FAIL);
 
 	vTimeSample.reserve(dwTimeSamples);
 
@@ -1144,7 +1167,7 @@ HRESULT CH264AtomParser::ParseCompositionOffsetHeader(vector<TIME_INFO>& vCompos
 	if(dwCompositionOffsetCount == 0)
 		return hr;
 
-	IF_FAILED_RETURN((dwCompositionOffsetCount > 0) && ((dwCompositionOffsetCount * 8) == (dwAtomCompositionOffsetSize - dwByteDone)) ? S_OK : E_FAIL);
+	IF_FAILED_RETURN((dwCompositionOffsetCount > 0) && ((dwCompositionOffsetCount * 8) <= (dwAtomCompositionOffsetSize - dwByteDone)) ? S_OK : E_FAIL);
 
 	vCompositionTime.reserve(dwCompositionOffsetCount);
 

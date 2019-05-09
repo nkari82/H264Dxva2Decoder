@@ -18,6 +18,7 @@ public:
 	HRESULT GetNextSample(const DWORD, BYTE**, DWORD*, LONGLONG*);
 	HRESULT GetVideoConfigDescriptor(const DWORD, BYTE**, DWORD*);
 	HRESULT GetVideoFrameRate(const DWORD, UINT*, UINT*);
+	HRESULT GetVideoDuration(const DWORD, MFTIME&);
 	HRESULT GetFirstVideoStream(DWORD*);
 	HRESULT SeekVideo(const MFTIME, const DWORD);
 	const int GetNaluLenghtSize() const{ return m_iNaluLenghtSize; }
