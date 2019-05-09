@@ -20,6 +20,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="BitStream.h" />
+    <ClInclude Include="CallbackMessage.h" />
     <ClInclude Include="Common\MFBuffer.h" />
     <ClInclude Include="Common\MFCriticSection.h" />
     <ClInclude Include="Common\MFLightBuffer.h" />
@@ -29,6 +30,9 @@
     <ClInclude Include="Common\MFTExternTrace.h" />
     <ClInclude Include="Common\MFTrace.h" />
     <ClInclude Include="Dxva2Decoder.h" />
+    <ClInclude Include="Dxva2Definition.h" />
+    <ClInclude Include="Dxva2Renderer.h" />
+    <ClInclude Include="Dxva2WindowsForm.h" />
     <ClInclude Include="H264AtomParser.h" />
     <ClInclude Include="H264Definition.h" />
     <ClInclude Include="H264NaluParser.h" />
@@ -38,12 +42,14 @@
     <ClInclude Include="PlayerDefinition.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="StdAfx.h" />
-    <ClInclude Include="WindowMessage.h" />
+    <ClInclude Include="Text2D.h" />
     <ClInclude Include="WindowsForm.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="BitStream.cpp" />
     <ClCompile Include="Dxva2Decoder.cpp" />
+    <ClCompile Include="Dxva2Renderer.cpp" />
+    <ClCompile Include="Dxva2WindowsForm.cpp" />
     <ClCompile Include="H264AtomParser.cpp" />
     <ClCompile Include="H264NaluParser.cpp" />
     <ClCompile Include="MFByteStream.cpp" />
@@ -54,12 +60,16 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="Text2D.cpp" />
     <ClCompile Include="WindowsForm.cpp" />
     <ClCompile Include="WindowsForm_Event.cpp" />
     <ClCompile Include="WinMain.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="H264Dxva2Decoder.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="app.ico" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>
