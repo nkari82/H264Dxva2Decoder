@@ -14,6 +14,22 @@
 #pragma comment(lib, "shlwapi")
 #pragma comment(lib, "dxva2")
 #pragma comment(lib, "d3d9")
+#pragma comment(lib, "Mf")
+#pragma comment(lib, "strmiids")
+#pragma comment(lib, "mfuuid")
+
+// Comment this, if you don't have the Directx SDK (june 2010) installed
+#define USE_DIRECTX9
+
+//----------------------------------------------------------------------------------------------
+// Microsoft DirectX SDK (June 2010)
+#ifdef USE_DIRECTX9
+#ifdef _WIN64
+#pragma comment(lib, "C:\\Program Files (x86)\\Microsoft DirectX SDK (June 2010)\\Lib\\x64\\d3dx9")
+#else
+#pragma comment(lib, "C:\\Program Files (x86)\\Microsoft DirectX SDK (June 2010)\\Lib\\x86\\d3dx9")
+#endif
+#endif
 
 //----------------------------------------------------------------------------------------------
 // Microsoft Windows SDK for Windows 7
@@ -27,6 +43,7 @@
 #include <crtdbg.h>
 #endif
 #include <commdlg.h>
+#include <CommCtrl.h>
 #include <Shellapi.h>
 #include <initguid.h>
 #include <Shlwapi.h>
@@ -39,6 +56,12 @@
 #include <Evr9.h>
 #include <dxva.h>
 #include <dxvahd.h>
+
+//----------------------------------------------------------------------------------------------
+// Microsoft DirectX SDK (June 2010)
+#ifdef USE_DIRECTX9
+#include "C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Include\d3dx9.h"
+#endif
 
 //----------------------------------------------------------------------------------------------
 // STL
@@ -68,9 +91,11 @@ using std::deque;
 #include ".\Common\MFCriticSection.h"
 #include ".\Common\MFReadParam.h"
 
-// Optimize the use of DXVA2 surfaces
-// I need to check with more movie files before including it
-#define USE_DXVA2_SURFACE_INDEX
+// Some GPU need this (Intel)
+#define USE_D3D_SURFACE_ALIGMENT
+
+// this is not really needed, if your system has good performance
+//#define USE_MMCSS_WORKQUEUE
 
 //----------------------------------------------------------------------------------------------
 // Project Files
@@ -78,21 +103,22 @@ using std::deque;
 #include "PlayerDefinition.h"
 #include "Mp4Definition.h"
 #include "H264Definition.h"
+#include "Dxva2Definition.h"
 #include "MFByteStream.h"
 #include "BitStream.h"
-#include "WindowMessage.h"
+#include "CallbackMessage.h"
 #include "H264AtomParser.h"
 #include "H264NaluParser.h"
+#include "Text2D.h"
 #include "Dxva2Decoder.h"
+#include "Dxva2Renderer.h"
 #include "Player.h"
+#include "Dxva2WindowsForm.h"
 #include "WindowsForm.h"
 
-#define WINDOWSFORM_CLASS L"H264Dxva2Decoder 1.0.0.0"
+#define WINDOWSFORM_CLASS L"H264Dxva2Decoder 1.1.0.0"
 
-// Workaround for Intel GPU : nalu buffer with start code 0x00,0x00,0x00,0x01 are not handled.
-// This workaround will not be enough if nalu contains more than one sub-slice.
-//#define USE_WORKAROUND_FOR_INTEL_GPU
-
+// See CDxva2Renderer::RenderFrame (IDirect3DDevice9Ex::Present)
 //#define HANDLE_DIRECTX_ERROR_UNDOCUMENTED
 
 #endif
