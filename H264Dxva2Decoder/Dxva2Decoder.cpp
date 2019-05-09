@@ -5,125 +5,96 @@
 
 CDxva2Decoder::CDxva2Decoder(){
 
-	memset(&m_Dxva2Desc, 0, sizeof(DXVA2_VideoDesc));
-
-	for(int i = 0; i < NUM_DXVA2_SURFACE; i++){
-		m_pSurface9[i] = NULL;
-	}
-
+	memset(&m_pSurface9, 0, sizeof(m_pSurface9));
 	memset(&m_ExecuteParams, 0, sizeof(DXVA2_DecodeExecuteParams));
 	memset(m_BufferDesc, 0, 4 * sizeof(DXVA2_DecodeBufferDesc));
 	memset(&m_H264PictureParams, 0, sizeof(DXVA_PicParams_H264));
 	memset(&m_H264QuantaMatrix, 0, sizeof(DXVA_Qmatrix_H264));
 	memset(m_H264SliceShort, 0, MAX_SUB_SLICE * sizeof(DXVA_Slice_H264_Short));
 
-	m_pD3D9Ex = NULL;
-	m_pDevice9Ex = NULL;
-	m_pResetToken = 0;
-	m_pDXVAManager = NULL;
 	m_pVideoDecoder = NULL;
+	m_pDirect3DDeviceManager9 = NULL;
 	m_hD3d9Device = NULL;
-	m_pDecoderService = NULL;
 	m_pConfigs = NULL;
 	m_gH264Vld = DXVA2_ModeH264_E;
-	m_dwCurPictureId = 0;
-	m_pDXVAVP = NULL;
 	m_iPrevTopFieldOrderCount = 0;
 	m_eNalUnitType = NAL_UNIT_UNSPEC_0;
 	m_btNalRefIdc = 0x00;
-	m_dwPicturePresent = 0;
-	m_dwPauseDuration = 40;
 	m_dwStatusReportFeedbackNumber = 1;
-
-#ifdef USE_DXVA2_SURFACE_INDEX
-	for(int i = 0; i < NUM_DXVA2_SURFACE; i++){
-		g_Dxva2SurfaceIndex[i].bUsed = FALSE;
-		g_Dxva2SurfaceIndex[i].bNalRef = FALSE;
-	}
-#endif
+	memset(g_Dxva2SurfaceIndexV2, 0, sizeof(g_Dxva2SurfaceIndexV2));
 }
 
-HRESULT CDxva2Decoder::InitDXVA2(const HWND hWnd, const SPS_DATA& sps, const UINT uiWidth, const UINT uiHeight, const UINT uiNumerator, const UINT uiDenominator){
+HRESULT CDxva2Decoder::InitVideoDecoder(IDirect3DDeviceManager9* pDirect3DDeviceManager9, const DXVA2_VideoDesc* pDxva2Desc, const SPS_DATA& sps){
 
 	HRESULT hr;
+	IDirectXVideoDecoderService* pDecoderService = NULL;
+	DXVA2_ConfigPictureDecode* pConfigs = NULL;
+	UINT uiCount;
+	UINT uiIndex = 0;
 
-	assert(m_pD3D9Ex == NULL && m_pDevice9Ex == NULL);
+	IF_FAILED_RETURN(pDirect3DDeviceManager9 && pDxva2Desc ? S_OK : E_POINTER);
+	IF_FAILED_RETURN(m_pDirect3DDeviceManager9 == NULL && m_hD3d9Device == NULL ? S_OK : E_UNEXPECTED);
+	IF_FAILED_RETURN(m_pVideoDecoder == NULL && m_pSurface9[0] == NULL ? S_OK : E_UNEXPECTED);
 
-	D3DPRESENT_PARAMETERS d3dpp;
+	m_pDirect3DDeviceManager9 = pDirect3DDeviceManager9;
+	m_pDirect3DDeviceManager9->AddRef();
 
-	IF_FAILED_RETURN(Direct3DCreate9Ex(D3D_SDK_VERSION, &m_pD3D9Ex));
+	try{
 
-	ZeroMemory(&d3dpp, sizeof(d3dpp));
+		IF_FAILED_THROW(m_pDirect3DDeviceManager9->OpenDeviceHandle(&m_hD3d9Device));
 
-	d3dpp.BackBufferFormat = D3DFMT_X8R8G8B8;
-	d3dpp.BackBufferCount = 1;
-	d3dpp.SwapEffect = D3DSWAPEFFECT_DISCARD;
-	d3dpp.hDeviceWindow = hWnd;
-	d3dpp.BackBufferWidth = uiWidth;
-	d3dpp.BackBufferHeight = uiHeight;
-	d3dpp.Windowed = TRUE;
-	d3dpp.Flags = D3DPRESENTFLAG_VIDEO;
+		IF_FAILED_THROW(m_pDirect3DDeviceManager9->GetVideoService(m_hD3d9Device, IID_IDirectXVideoDecoderService, reinterpret_cast<void**>(&pDecoderService)));
 
-	IF_FAILED_RETURN(m_pD3D9Ex->CreateDeviceEx(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, hWnd, D3DCREATE_MULTITHREADED | D3DCREATE_SOFTWARE_VERTEXPROCESSING, &d3dpp, NULL, &m_pDevice9Ex));
+		IF_FAILED_THROW(pDecoderService->GetDecoderConfigurations(m_gH264Vld, pDxva2Desc, NULL, &uiCount, &pConfigs));
 
-	IF_FAILED_RETURN(m_pDevice9Ex->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE));
-	IF_FAILED_RETURN(m_pDevice9Ex->SetRenderState(D3DRS_ZENABLE, FALSE));
-	IF_FAILED_RETURN(m_pDevice9Ex->SetRenderState(D3DRS_LIGHTING, FALSE));
+		IF_FAILED_THROW((pConfigs == NULL || uiCount == 0) ? E_FAIL : S_OK);
 
-	DXVA2_Frequency Dxva2Freq;
-	Dxva2Freq.Numerator = uiNumerator;
-	Dxva2Freq.Denominator = uiDenominator;
+		for(; uiIndex < uiCount; uiIndex++){
 
-	m_dwPauseDuration = (1000 / (uiNumerator / uiDenominator)) - 4;
+			if(pConfigs[uiIndex].ConfigBitstreamRaw == 2){
 
-	m_Dxva2Desc.SampleWidth = uiWidth;
-	m_Dxva2Desc.SampleHeight = uiHeight;
+				// if ConfigBitstreamRaw == 2, we can use DXVA_Slice_H264_Short
+				m_pConfigs = pConfigs;
+				break;
+			}
+		}
 
-	m_Dxva2Desc.SampleFormat.SampleFormat = MFVideoInterlace_Progressive;
+		IF_FAILED_THROW(m_pConfigs == NULL ? E_FAIL : S_OK);
 
-	m_Dxva2Desc.Format = static_cast<D3DFORMAT>(D3DFMT_NV12);
-	m_Dxva2Desc.InputSampleFreq = Dxva2Freq;
-	m_Dxva2Desc.OutputFrameFreq = Dxva2Freq;
+#ifdef USE_D3D_SURFACE_ALIGMENT
+		IF_FAILED_THROW(pDecoderService->CreateSurface(D3DALIGN(pDxva2Desc->SampleWidth, 16), D3DALIGN(pDxva2Desc->SampleHeight, 16), NUM_DXVA2_SURFACE - 1,
+			static_cast<D3DFORMAT>(D3DFMT_NV12), D3DPOOL_DEFAULT, 0, DXVA2_VideoDecoderRenderTarget, m_pSurface9, NULL));
+#else
+		IF_FAILED_THROW(pDecoderService->CreateSurface(pDxva2Desc->SampleWidth, pDxva2Desc->SampleHeight, NUM_DXVA2_SURFACE - 1,
+			static_cast<D3DFORMAT>(D3DFMT_NV12), D3DPOOL_DEFAULT, 0, DXVA2_VideoDecoderRenderTarget, m_pSurface9, NULL));
+#endif
 
-	IF_FAILED_RETURN(DXVA2CreateDirect3DDeviceManager9(&m_pResetToken, &m_pDXVAManager));
+		IF_FAILED_THROW(pDecoderService->CreateVideoDecoder(m_gH264Vld, pDxva2Desc, &m_pConfigs[uiIndex], m_pSurface9, NUM_DXVA2_SURFACE, &m_pVideoDecoder));
 
-	IF_FAILED_RETURN(m_pDXVAManager->ResetDevice(m_pDevice9Ex, m_pResetToken));
+		InitDxva2Struct(sps);
+	}
+	catch(HRESULT){}
 
-	IF_FAILED_RETURN(m_pDXVAManager->OpenDeviceHandle(&m_hD3d9Device));
-
-	IF_FAILED_RETURN(m_pDXVAManager->GetVideoService(m_hD3d9Device, IID_IDirectXVideoDecoderService, reinterpret_cast<void**>(&m_pDecoderService)));
-
-	IF_FAILED_RETURN(InitDecoderService());
-
-	IF_FAILED_RETURN(InitVideoDecoder(sps));
-
-	IF_FAILED_RETURN(InitVideoProcessor());
+	SAFE_RELEASE(pDecoderService);
 
 	return hr;
 }
 
 void CDxva2Decoder::OnRelease(){
 
-	if(m_pDevice9Ex == NULL)
-		return;
-
-	TRACE((L"PicturePresent = %u - Poc = %d - PicturePresentation = %d\r\n", m_dwPicturePresent, m_dqPoc.size(), m_dqPicturePresentation.size()));
-
-	memset(&m_Dxva2Desc, 0, sizeof(DXVA2_VideoDesc));
 	memset(&m_ExecuteParams, 0, sizeof(DXVA2_DecodeExecuteParams));
 	memset(m_BufferDesc, 0, 4 * sizeof(DXVA2_DecodeBufferDesc));
 	memset(&m_H264PictureParams, 0, sizeof(DXVA_PicParams_H264));
 	memset(&m_H264QuantaMatrix, 0, sizeof(DXVA_Qmatrix_H264));
 	memset(m_H264SliceShort, 0, MAX_SUB_SLICE * sizeof(DXVA_Slice_H264_Short));
 
-	m_dwCurPictureId = 0;
 	m_iPrevTopFieldOrderCount = 0;
 	m_eNalUnitType = NAL_UNIT_UNSPEC_0;
 	m_btNalRefIdc = 0x00;
 
-	if(m_pDXVAManager && m_hD3d9Device){
+	if(m_pDirect3DDeviceManager9 && m_hD3d9Device){
 
-		LOG_HRESULT(m_pDXVAManager->CloseDeviceHandle(m_hD3d9Device));
+		LOG_HRESULT(m_pDirect3DDeviceManager9->CloseDeviceHandle(m_hD3d9Device));
 		m_hD3d9Device = NULL;
 	}
 
@@ -136,52 +107,27 @@ void CDxva2Decoder::OnRelease(){
 		m_pConfigs = NULL;
 	}
 
-	SAFE_RELEASE(m_pDecoderService);
-	SAFE_RELEASE(m_pDXVAManager);
-	SAFE_RELEASE(m_pD3D9Ex);
+	SAFE_RELEASE(m_pDirect3DDeviceManager9);
 	SAFE_RELEASE(m_pVideoDecoder);
-	m_pResetToken = 0;
 	m_dwStatusReportFeedbackNumber = 1;
-	m_dwPicturePresent = 0;
-
-	SAFE_RELEASE(m_pDXVAVP);
 
 	m_dqPoc.clear();
 	m_dqPicturePresentation.clear();
 
-#ifdef USE_DXVA2_SURFACE_INDEX
-	for(int i = 0; i < NUM_DXVA2_SURFACE; i++){
-		g_Dxva2SurfaceIndex[i].bUsed = FALSE;
-		g_Dxva2SurfaceIndex[i].bNalRef = FALSE;
-	}
-#endif
-
-	if(m_pDevice9Ex){
-
-		ULONG ulCount = m_pDevice9Ex->Release();
-		m_pDevice9Ex = NULL;
-		assert(ulCount == 0);
-	}
+	ResetAllSurfaceIndex();
 }
 
 void CDxva2Decoder::Reset(){
 
-	m_dwCurPictureId = 0;
 	m_iPrevTopFieldOrderCount = 0;
 	m_eNalUnitType = NAL_UNIT_UNSPEC_0;
 	m_btNalRefIdc = 0x00;
 	m_dwStatusReportFeedbackNumber = 1;
-	m_dwPicturePresent = 0;
 
 	m_dqPoc.clear();
 	m_dqPicturePresentation.clear();
 
-#ifdef USE_DXVA2_SURFACE_INDEX
-	for(int i = 0; i < NUM_DXVA2_SURFACE; i++){
-		g_Dxva2SurfaceIndex[i].bUsed = FALSE;
-		g_Dxva2SurfaceIndex[i].bNalRef = FALSE;
-	}
-#endif
+	ResetAllSurfaceIndex();
 }
 
 HRESULT CDxva2Decoder::DecodeFrame(CMFBuffer& cMFNaluBuffer, const PICTURE_INFO& Picture, const LONGLONG& llTime, const int iSubSliceCount){
@@ -194,30 +140,17 @@ HRESULT CDxva2Decoder::DecodeFrame(CMFBuffer& cMFNaluBuffer, const PICTURE_INFO&
 
 	assert(m_pVideoDecoder != NULL);
 
-#ifndef USE_DXVA2_SURFACE_INDEX
-	if(m_dwCurPictureId >= NUM_DXVA2_SURFACE){
-		m_dwCurPictureId = 0;
-	}
-#else
-	m_dwCurPictureId = (DWORD)-1;
-	for(DWORD i = 0; i < NUM_DXVA2_SURFACE; i++){
-		if(g_Dxva2SurfaceIndex[i].bUsed == FALSE){
-			m_dwCurPictureId = i;
-			break;
-		}
-	}
-	//TRACE((L"CurPictureId = %lu", m_dwCurPictureId));
-	assert(m_dwCurPictureId != (DWORD)-1);
-#endif
+	DWORD dwCurPictureId = GetFreeSurfaceIndex();
+	IF_FAILED_RETURN(dwCurPictureId == (DWORD)-1 ? E_FAIL : S_OK);
 
 	try{
 
-		IF_FAILED_THROW(m_pDXVAManager->TestDevice(m_hD3d9Device));
-		IF_FAILED_THROW(m_pDXVAManager->LockDevice(m_hD3d9Device, &pDevice, TRUE));
+		IF_FAILED_THROW(m_pDirect3DDeviceManager9->TestDevice(m_hD3d9Device));
+		IF_FAILED_THROW(m_pDirect3DDeviceManager9->LockDevice(m_hD3d9Device, &pDevice, TRUE));
 
 		do{
 
-			hr = m_pVideoDecoder->BeginFrame(m_pSurface9[m_dwCurPictureId], NULL);
+			hr = m_pVideoDecoder->BeginFrame(m_pSurface9[dwCurPictureId], NULL);
 			Sleep(1);
 		}
 		while(hr == E_PENDING);
@@ -225,8 +158,9 @@ HRESULT CDxva2Decoder::DecodeFrame(CMFBuffer& cMFNaluBuffer, const PICTURE_INFO&
 		IF_FAILED_THROW(hr);
 
 		// Picture
-		InitPictureParams(m_dwCurPictureId, Picture);
-		HandlePOC(m_dwCurPictureId, Picture, llTime);
+		InitPictureParams(dwCurPictureId, Picture);
+		HandlePOC(dwCurPictureId, Picture, llTime);
+
 		IF_FAILED_THROW(m_pVideoDecoder->GetBuffer(DXVA2_PictureParametersBufferType, &pBuffer, &uiSize));
 		assert(sizeof(DXVA_PicParams_H264) <= uiSize);
 		memcpy(pBuffer, &m_H264PictureParams, sizeof(DXVA_PicParams_H264));
@@ -265,11 +199,7 @@ HRESULT CDxva2Decoder::DecodeFrame(CMFBuffer& cMFNaluBuffer, const PICTURE_INFO&
 
 		IF_FAILED_THROW(m_pVideoDecoder->EndFrame(NULL));
 
-		IF_FAILED_THROW(m_pDXVAManager->UnlockDevice(m_hD3d9Device, FALSE));
-
-#ifndef USE_DXVA2_SURFACE_INDEX
-		m_dwCurPictureId++;
-#endif
+		IF_FAILED_THROW(m_pDirect3DDeviceManager9->UnlockDevice(m_hD3d9Device, FALSE));
 	}
 	catch(HRESULT){}
 
@@ -278,25 +208,17 @@ HRESULT CDxva2Decoder::DecodeFrame(CMFBuffer& cMFNaluBuffer, const PICTURE_INFO&
 	return hr;
 }
 
-HRESULT CDxva2Decoder::RenderFrame(){
+BOOL CDxva2Decoder::CheckFrame(SAMPLE_PRESENTATION& SamplPresentation){
 
-	HRESULT hr = S_OK;
-	IDirect3DSurface9* pRT = NULL;
-	DXVAHD_STREAM_DATA stream_data;
-	DWORD dwSurfaceIndex = 0;
 	BOOL bHasPicture = FALSE;
-	LONGLONG llTime = 0;
-	ZeroMemory(&stream_data, sizeof(DXVAHD_STREAM_DATA));
-
-	assert(m_pDXVAVP);
 
 	for(deque<PICTURE_PRESENTATION>::const_iterator it = m_dqPicturePresentation.begin(); it != m_dqPicturePresentation.end(); ++it){
 
 		if(it->TopFieldOrderCnt == 0 || it->TopFieldOrderCnt == (m_iPrevTopFieldOrderCount + 2) || it->TopFieldOrderCnt == (m_iPrevTopFieldOrderCount + 1)){
 
-			dwSurfaceIndex = it->dwDXVA2Index;
+			SamplPresentation.dwDXVA2Index = it->dwDXVA2Index;
 			m_iPrevTopFieldOrderCount = it->TopFieldOrderCnt;
-			llTime = it->llTime;
+			SamplPresentation.llTime = it->llTime;
 			m_dqPicturePresentation.erase(it);
 			bHasPicture = TRUE;
 			break;
@@ -306,73 +228,14 @@ HRESULT CDxva2Decoder::RenderFrame(){
 	// Use assert to check m_dqPicturePresentation size
 	//assert(m_dqPicturePresentation.size() < NUM_DXVA2_SURFACE);
 
-	if(bHasPicture == FALSE){
-		return hr;
-	}
-
 	// Check past frames, sometimes needed...
-	ErasePastFrames(llTime);
+	if(bHasPicture)
+		ErasePastFrames(SamplPresentation.llTime);
 
-	m_dwPicturePresent++;
-
-	try{
-
-		stream_data.Enable = TRUE;
-		stream_data.OutputIndex = 0;
-		stream_data.InputFrameOrField = dwSurfaceIndex;
-		stream_data.pInputSurface = m_pSurface9[dwSurfaceIndex];
-
-		IF_FAILED_THROW(m_pDevice9Ex->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &pRT));
-
-		IF_FAILED_THROW(m_pDXVAVP->VideoProcessBltHD(pRT, dwSurfaceIndex, 1, &stream_data));
-
-#ifdef HANDLE_DIRECTX_ERROR_UNDOCUMENTED
-		hr = m_pDevice9Ex->Present(NULL, NULL, NULL, NULL);
-
-		// Present can return 0x88760872, i don't know what it is, it is OK to continue.
-		// Move window border very quickly and continually to get this error
-		if(hr == DIRECTX_ERROR_UNDOCUMENTED)
-			hr = S_OK;
-		else
-			IF_FAILED_THROW(hr);
-#else
-		IF_FAILED_THROW(m_pDevice9Ex->Present(NULL, NULL, NULL, NULL));
-#endif
-	}
-	catch(HRESULT){}
-
-	SAFE_RELEASE(pRT);
-
-	Sleep(m_dwPauseDuration);
-
-	return hr;
+	return bHasPicture;
 }
 
-HRESULT CDxva2Decoder::RenderBlackFrame(){
-
-	HRESULT hr;
-	IDirect3DSurface9* pRT = NULL;
-
-	IF_FAILED_RETURN(m_pDevice9Ex ? S_OK : E_UNEXPECTED);
-
-	try{
-
-		// Clear the render target seems not to work as expected, ColorFill seems to be OK
-		//IF_FAILED_RETURN(m_pDevice9Ex->Clear(0L, NULL, D3DCLEAR_TARGET, 0x00000000, 1.0f, 0L));
-		IF_FAILED_RETURN(m_pDevice9Ex->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &pRT));
-		IF_FAILED_RETURN(m_pDevice9Ex->ColorFill(pRT, NULL, 0xff000000));
-		IF_FAILED_RETURN(m_pDevice9Ex->Present(NULL, NULL, NULL, NULL));
-
-		// It seems we should also clear dxva2 surfaces
-	}
-	catch(HRESULT){}
-
-	SAFE_RELEASE(pRT);
-
-	return hr;
-}
-
-HRESULT CDxva2Decoder::AddSliceShortInfo(const int iSubSliceCount, const DWORD dwSize){
+HRESULT CDxva2Decoder::AddSliceShortInfo(const int iSubSliceCount, const DWORD dwSize, const BOOL b4BytesStartCode){
 
 	HRESULT hr;
 	IF_FAILED_RETURN(iSubSliceCount > 0 && iSubSliceCount < MAX_SUB_SLICE ? S_OK : E_INVALIDARG);
@@ -383,23 +246,31 @@ HRESULT CDxva2Decoder::AddSliceShortInfo(const int iSubSliceCount, const DWORD d
 	m_H264SliceShort[iIndex].BSNALunitDataLocation = 0;
 	m_H264SliceShort[iIndex].wBadSliceChopping = 0;
 
+	if(b4BytesStartCode){
+
+		m_H264SliceShort[iIndex].SliceBytesInBuffer--;
+		m_H264SliceShort[iIndex].BSNALunitDataLocation++;
+	}
+
 	for(int i = 1; i < iSubSliceCount; i++)
-		m_H264SliceShort[iIndex].BSNALunitDataLocation += m_H264SliceShort[i - 1].SliceBytesInBuffer;
+		m_H264SliceShort[iIndex].BSNALunitDataLocation += (m_H264SliceShort[i - 1].SliceBytesInBuffer + (b4BytesStartCode ? 1 : 0));
 
 	return hr;
 }
 
-HRESULT CDxva2Decoder::InitDecoderService(){
+HRESULT CDxva2Decoder::InitDecoderService(IDirectXVideoDecoderService* pDecoderService){
 
-	HRESULT hr = S_OK;
+	HRESULT hr;
 	GUID* pGuids = NULL;
 	D3DFORMAT* pFormats = NULL;
 	UINT uiCount;
 	BOOL bDecoderH264 = FALSE;
 
+	IF_FAILED_RETURN(pDecoderService ? S_OK : E_POINTER);
+
 	try{
 
-		IF_FAILED_THROW(m_pDecoderService->GetDecoderDeviceGuids(&uiCount, &pGuids));
+		IF_FAILED_THROW(pDecoderService->GetDecoderDeviceGuids(&uiCount, &pGuids));
 
 		for(UINT ui = 0; ui < uiCount; ui++){
 
@@ -412,7 +283,7 @@ HRESULT CDxva2Decoder::InitDecoderService(){
 		IF_FAILED_THROW(bDecoderH264 ? S_OK : E_FAIL);
 		bDecoderH264 = FALSE;
 
-		IF_FAILED_THROW(m_pDecoderService->GetDecoderRenderTargets(m_gH264Vld, &uiCount, &pFormats));
+		IF_FAILED_THROW(pDecoderService->GetDecoderRenderTargets(m_gH264Vld, &uiCount, &pFormats));
 
 		for(UINT ui = 0; ui < uiCount; ui++){
 
@@ -428,61 +299,6 @@ HRESULT CDxva2Decoder::InitDecoderService(){
 
 	CoTaskMemFree(pFormats);
 	CoTaskMemFree(pGuids);
-
-	return hr;
-}
-
-HRESULT CDxva2Decoder::InitVideoDecoder(const SPS_DATA& sps){
-
-	HRESULT hr;
-	DXVA2_ConfigPictureDecode* pConfigs = NULL;
-	UINT uiCount;
-	UINT uiIndex = 0;
-
-	IF_FAILED_RETURN(m_pDecoderService->GetDecoderConfigurations(m_gH264Vld, &m_Dxva2Desc, NULL, &uiCount, &pConfigs));
-
-	IF_FAILED_RETURN((pConfigs == NULL || uiCount == 0) ? E_FAIL : S_OK);
-
-	for(; uiIndex < uiCount; uiIndex++){
-
-		// Configuration i use with NVIDIA 700 series
-
-		// GUID guidConfigBitstreamEncryption		: {1B81BED0-A0C7-11D3-B984-00C04F2E73C5} (DXVA_NoEncrypt)
-		// GUID guidConfigMBcontrolEncryption		: {1B81BED0-A0C7-11D3-B984-00C04F2E73C5} (DXVA_NoEncrypt)
-		// GUID guidConfigResidDiffEncryption		: {1B81BED0-A0C7-11D3-B984-00C04F2E73C5} (DXVA_NoEncrypt)
-		// UINT ConfigBitstreamRaw					: 2
-		// UINT ConfigMBcontrolRasterOrder			: 0
-		// UINT ConfigResidDiffHost					: 0
-		// UINT ConfigSpatialResid8					: 0
-		// UINT ConfigResid8Subtraction				: 0
-		// UINT ConfigSpatialHost8or9Clipping		: 0
-		// UINT ConfigSpatialResidInterleaved		: 0
-		// UINT ConfigIntraResidUnsigned			: 0
-		// UINT ConfigResidDiffAccelerator			: 1
-		// UINT ConfigHostInverseScan				: 1
-		// UINT ConfigSpecificIDCT					: 2
-		// UINT Config4GroupedCoefs					: 0
-		// USHORT ConfigMinRenderTargetBuffCount	: 3
-		// USHORT ConfigDecoderSpecific				: 0
-
-		if(pConfigs[uiIndex].ConfigBitstreamRaw == 2){
-
-			// if ConfigBitstreamRaw == 2, we can use DXVA_Slice_H264_Short
-			m_pConfigs = pConfigs;
-			break;
-		}
-	}
-
-	IF_FAILED_RETURN(m_pConfigs == NULL ? E_FAIL : S_OK);
-
-	assert(m_pVideoDecoder == NULL && m_pSurface9[0] == NULL);
-
-	IF_FAILED_RETURN(m_pDecoderService->CreateSurface(m_Dxva2Desc.SampleWidth, m_Dxva2Desc.SampleHeight, NUM_DXVA2_SURFACE - 1,
-		static_cast<D3DFORMAT>(D3DFMT_NV12), D3DPOOL_DEFAULT, 0, DXVA2_VideoDecoderRenderTarget, m_pSurface9, NULL));
-
-	IF_FAILED_RETURN(m_pDecoderService->CreateVideoDecoder(m_gH264Vld, &m_Dxva2Desc, &m_pConfigs[uiIndex], m_pSurface9, NUM_DXVA2_SURFACE, &m_pVideoDecoder));
-
-	InitDxva2Struct(sps);
 
 	return hr;
 }
@@ -515,12 +331,11 @@ void CDxva2Decoder::InitPictureParams(const DWORD dwIndex, const PICTURE_INFO& P
 
 	if(m_eNalUnitType == NAL_UNIT_CODED_SLICE_IDR){
 
-#ifdef USE_DXVA2_SURFACE_INDEX
 		for(int i = 0; i < NUM_DXVA2_SURFACE; i++){
-			g_Dxva2SurfaceIndex[i].bUsed = FALSE;
-			g_Dxva2SurfaceIndex[i].bNalRef = FALSE;
+			g_Dxva2SurfaceIndexV2[i].bUsedByDecoder = FALSE;
+			g_Dxva2SurfaceIndexV2[i].bNalRef = FALSE;
 		}
-#endif
+
 		m_dqPoc.clear();
 	}
 
@@ -631,14 +446,13 @@ void CDxva2Decoder::HandlePOC(const DWORD dwIndex, const PICTURE_INFO& Picture, 
 
 	if(m_btNalRefIdc && Picture.slice.PicMarking.adaptive_ref_pic_marking_mode_flag == FALSE && m_dqPoc.size() >= Picture.sps.num_ref_frames){
 
-#ifdef USE_DXVA2_SURFACE_INDEX
 		if(m_dqPoc.size() != 0){
 
 			UCHAR uc = m_dqPoc.back().bRefFrameList;
-			g_Dxva2SurfaceIndex[uc].bUsed = FALSE;
-			g_Dxva2SurfaceIndex[uc].bNalRef = FALSE;
+			g_Dxva2SurfaceIndexV2[uc].bUsedByDecoder = FALSE;
+			g_Dxva2SurfaceIndexV2[uc].bNalRef = FALSE;
 		}
-#endif
+
 		m_dqPoc.pop_back();
 	}
 
@@ -654,19 +468,15 @@ void CDxva2Decoder::HandlePOC(const DWORD dwIndex, const PICTURE_INFO& Picture, 
 
 		m_dqPoc.push_front(NewPoc);
 
-#ifdef USE_DXVA2_SURFACE_INDEX
 		for(int i = 0; i < NUM_DXVA2_SURFACE; i++){
 
-			if(g_Dxva2SurfaceIndex[i].bUsed && g_Dxva2SurfaceIndex[i].bNalRef == FALSE)
-				g_Dxva2SurfaceIndex[i].bUsed = FALSE;
+			if(g_Dxva2SurfaceIndexV2[i].bUsedByDecoder && g_Dxva2SurfaceIndexV2[i].bNalRef == FALSE)
+				g_Dxva2SurfaceIndexV2[i].bUsedByDecoder = FALSE;
 		}
-#endif
 	}
 
-#ifdef USE_DXVA2_SURFACE_INDEX
-	g_Dxva2SurfaceIndex[dwIndex].bUsed = TRUE;
-	g_Dxva2SurfaceIndex[dwIndex].bNalRef = m_btNalRefIdc != 0x00;
-#endif
+	g_Dxva2SurfaceIndexV2[dwIndex].bUsedByDecoder = TRUE;
+	g_Dxva2SurfaceIndexV2[dwIndex].bNalRef = m_btNalRefIdc != 0x00;
 
 	PICTURE_PRESENTATION pp;
 	pp.TopFieldOrderCnt = Picture.slice.TopFieldOrderCnt;
@@ -701,10 +511,9 @@ void CDxva2Decoder::HandlePOC(const DWORD dwIndex, const PICTURE_INFO& Picture, 
 
 				auto it = m_dqPoc.begin() + uiCurIndex;
 
-#ifdef USE_DXVA2_SURFACE_INDEX
-				g_Dxva2SurfaceIndex[it->bRefFrameList].bUsed = FALSE;
-				g_Dxva2SurfaceIndex[it->bRefFrameList].bNalRef = FALSE;
-#endif
+				g_Dxva2SurfaceIndexV2[it->bRefFrameList].bUsedByDecoder = FALSE;
+				g_Dxva2SurfaceIndexV2[it->bRefFrameList].bNalRef = FALSE;
+
 				m_dqPoc.erase(it);
 			}
 		}
@@ -722,7 +531,7 @@ void CDxva2Decoder::HandlePOC(const DWORD dwIndex, const PICTURE_INFO& Picture, 
 	}
 }
 
-void CDxva2Decoder::ErasePastFrames(const LONGLONG& llTime){
+void CDxva2Decoder::ErasePastFrames(const LONGLONG llTime){
 
 	for(deque<PICTURE_PRESENTATION>::const_iterator it = m_dqPicturePresentation.begin(); it != m_dqPicturePresentation.end();){
 
@@ -733,119 +542,37 @@ void CDxva2Decoder::ErasePastFrames(const LONGLONG& llTime){
 	}
 }
 
-HRESULT CDxva2Decoder::InitVideoProcessor(){
+void CDxva2Decoder::FreeSurfaceIndexRenderer(const DWORD dwSurfaceIndex){
 
-	HRESULT hr;
+	assert(dwSurfaceIndex >= 0 && dwSurfaceIndex < NUM_DXVA2_SURFACE);
 
-	IDXVAHD_Device* pDXVAHD = NULL;
-	D3DFORMAT* pFormats = NULL;
-	DXVAHD_VPCAPS* pVPCaps = NULL;
-	UINT uiIndex;
+	AutoLock lock(m_CriticSection);
 
-	DXVAHD_CONTENT_DESC desc;
-
-	desc.InputFrameFormat = DXVAHD_FRAME_FORMAT_PROGRESSIVE;
-	desc.InputFrameRate.Numerator = m_Dxva2Desc.InputSampleFreq.Numerator;
-	desc.InputFrameRate.Denominator = m_Dxva2Desc.InputSampleFreq.Denominator;
-	desc.InputWidth = m_Dxva2Desc.SampleWidth;
-	desc.InputHeight = m_Dxva2Desc.SampleHeight;
-	desc.OutputFrameRate.Numerator = m_Dxva2Desc.OutputFrameFreq.Numerator;
-	desc.OutputFrameRate.Denominator = m_Dxva2Desc.OutputFrameFreq.Denominator;
-	desc.OutputWidth = m_Dxva2Desc.SampleWidth;
-	desc.OutputHeight = m_Dxva2Desc.SampleHeight;
-
-	DXVAHD_VPDEVCAPS caps;
-	ZeroMemory(&caps, sizeof(caps));
-
-	try{
-
-		IF_FAILED_THROW(DXVAHD_CreateDevice(m_pDevice9Ex, &desc, DXVAHD_DEVICE_USAGE_PLAYBACK_NORMAL, NULL, &pDXVAHD));
-
-		IF_FAILED_THROW(pDXVAHD->GetVideoProcessorDeviceCaps(&caps));
-
-		IF_FAILED_THROW(caps.MaxInputStreams < 1 ? E_FAIL : S_OK);
-
-		pFormats = new (std::nothrow)D3DFORMAT[caps.OutputFormatCount];
-
-		IF_FAILED_THROW(pFormats == NULL ? E_OUTOFMEMORY : S_OK);
-
-		IF_FAILED_THROW(pDXVAHD->GetVideoProcessorOutputFormats(caps.OutputFormatCount, pFormats));
-
-		for(uiIndex = 0; uiIndex < caps.OutputFormatCount; uiIndex++){
-
-			if(pFormats[uiIndex] == D3DFMT_X8R8G8B8){
-				break;
-			}
-		}
-
-		IF_FAILED_THROW(uiIndex == caps.OutputFormatCount ? E_FAIL : S_OK);
-
-		SAFE_DELETE_ARRAY(pFormats);
-
-		pFormats = new (std::nothrow)D3DFORMAT[caps.InputFormatCount];
-
-		IF_FAILED_THROW(pFormats == NULL ? E_OUTOFMEMORY : S_OK);
-
-		IF_FAILED_THROW(pDXVAHD->GetVideoProcessorInputFormats(caps.InputFormatCount, pFormats));
-
-		for(uiIndex = 0; uiIndex < caps.InputFormatCount; uiIndex++){
-
-			if(pFormats[uiIndex] == m_Dxva2Desc.Format){
-				break;
-			}
-		}
-
-		IF_FAILED_THROW(uiIndex == caps.InputFormatCount ? E_FAIL : S_OK);
-
-		pVPCaps = new (std::nothrow)DXVAHD_VPCAPS[caps.VideoProcessorCount];
-
-		IF_FAILED_THROW(pVPCaps == NULL ? E_OUTOFMEMORY : S_OK);
-
-		IF_FAILED_THROW(pDXVAHD->GetVideoProcessorCaps(caps.VideoProcessorCount, pVPCaps));
-
-		IF_FAILED_THROW(pDXVAHD->CreateVideoProcessor(&pVPCaps[0].VPGuid, &m_pDXVAVP));
-
-		IF_FAILED_THROW(m_pDevice9Ex->Clear(0, NULL, D3DCLEAR_TARGET, D3DCOLOR_ARGB(255, 0, 0, 0), 1.0f, 0));
-
-		IF_FAILED_THROW(ConfigureVideoProcessor());
-	}
-	catch(HRESULT){}
-
-	SAFE_DELETE_ARRAY(pFormats);
-	SAFE_DELETE_ARRAY(pVPCaps);
-
-	SAFE_RELEASE(pDXVAHD);
-
-	return hr;
+	g_Dxva2SurfaceIndexV2[dwSurfaceIndex].bUsedByRenderer = FALSE;
 }
 
-HRESULT CDxva2Decoder::ConfigureVideoProcessor(){
+DWORD CDxva2Decoder::GetFreeSurfaceIndex(){
 
-	HRESULT hr = S_OK;
+	DWORD dwSurfaceIndex = (DWORD)-1;
 
-	const RECT FrameRect = {0L, 0L, (LONG)m_Dxva2Desc.SampleWidth, (LONG)m_Dxva2Desc.SampleHeight};
+	AutoLock lock(m_CriticSection);
 
-	DXVAHD_STREAM_STATE_FRAME_FORMAT_DATA FrameFormat = {DXVAHD_FRAME_FORMAT_PROGRESSIVE};
-	DXVAHD_STREAM_STATE_LUMA_KEY_DATA Luma = {FALSE, 1.0f, 1.0f};
-	DXVAHD_STREAM_STATE_ALPHA_DATA Alpha = {TRUE, float(0xFF) / 0xFF};
-	DXVAHD_STREAM_STATE_SOURCE_RECT_DATA Src = {TRUE, FrameRect};
-	DXVAHD_STREAM_STATE_DESTINATION_RECT_DATA Dest = {TRUE, FrameRect};
-	DXVAHD_STREAM_STATE_INPUT_COLOR_SPACE_DATA Color = {0, 0, 1, 0};
-	DXVAHD_BLT_STATE_TARGET_RECT_DATA Tr = {TRUE, FrameRect};
+	for(DWORD dw = 0; dw < NUM_DXVA2_SURFACE; dw++){
 
-	try{
+		if(g_Dxva2SurfaceIndexV2[dw].bUsedByDecoder == FALSE && g_Dxva2SurfaceIndexV2[dw].bUsedByRenderer == FALSE){
 
-		IF_FAILED_THROW(m_pDXVAVP->SetVideoProcessStreamState(0, DXVAHD_STREAM_STATE_D3DFORMAT, sizeof(m_Dxva2Desc.Format), &m_Dxva2Desc.Format));
-		IF_FAILED_THROW(m_pDXVAVP->SetVideoProcessStreamState(0, DXVAHD_STREAM_STATE_FRAME_FORMAT, sizeof(FrameFormat), &FrameFormat));
-		IF_FAILED_THROW(m_pDXVAVP->SetVideoProcessStreamState(0, DXVAHD_STREAM_STATE_LUMA_KEY, sizeof(Luma), &Luma));
-		IF_FAILED_THROW(m_pDXVAVP->SetVideoProcessStreamState(0, DXVAHD_STREAM_STATE_ALPHA, sizeof(Alpha), &Alpha));
-		IF_FAILED_THROW(m_pDXVAVP->SetVideoProcessStreamState(0, DXVAHD_STREAM_STATE_SOURCE_RECT, sizeof(Src), &Src));
-		IF_FAILED_THROW(m_pDXVAVP->SetVideoProcessStreamState(0, DXVAHD_STREAM_STATE_DESTINATION_RECT, sizeof(Dest), &Dest));
-		IF_FAILED_THROW(m_pDXVAVP->SetVideoProcessStreamState(0, DXVAHD_STREAM_STATE_INPUT_COLOR_SPACE, sizeof(Color), &Color));
-		IF_FAILED_THROW(m_pDXVAVP->SetVideoProcessBltState(DXVAHD_BLT_STATE_OUTPUT_COLOR_SPACE, sizeof(Color), &Color));
-		IF_FAILED_THROW(m_pDXVAVP->SetVideoProcessBltState(DXVAHD_BLT_STATE_TARGET_RECT, sizeof(Tr), &Tr));
+			//g_Dxva2SurfaceIndexV2[dw].bUsedByDecoder = TRUE;
+			g_Dxva2SurfaceIndexV2[dw].bUsedByRenderer = TRUE;
+			dwSurfaceIndex = dw;
+			break;
+		}
 	}
-	catch(HRESULT){}
 
-	return hr;
+	return dwSurfaceIndex;
+}
+
+void CDxva2Decoder::ResetAllSurfaceIndex(){
+
+	AutoLock lock(m_CriticSection);
+	memset(g_Dxva2SurfaceIndexV2, 0, sizeof(g_Dxva2SurfaceIndexV2));
 }

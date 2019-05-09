@@ -11,6 +11,10 @@
 
 const DWORD D3DFMT_NV12 = MAKEFOURCC('N', 'V', '1', '2');
 
+#ifdef USE_D3D_SURFACE_ALIGMENT
+#define D3DALIGN(x, a) (((x)+(a)-1)&~((a)-1))
+#endif
+
 class CDxva2Decoder{
 
 public:
@@ -18,30 +22,27 @@ public:
 	CDxva2Decoder();
 	~CDxva2Decoder(){ OnRelease(); }
 
-	HRESULT InitDXVA2(const HWND, const SPS_DATA&, const UINT, const UINT, const UINT, const UINT);
+	HRESULT InitVideoDecoder(IDirect3DDeviceManager9*, const DXVA2_VideoDesc*, const SPS_DATA&);
 	void OnRelease();
 	void Reset();
 	HRESULT DecodeFrame(CMFBuffer&, const PICTURE_INFO&, const LONGLONG&, const int);
-	HRESULT RenderFrame();
-	HRESULT RenderBlackFrame();
-	HRESULT AddSliceShortInfo(const int, const DWORD);
-	void ClearPresentation(){ m_dqPicturePresentation.clear(); }
+	BOOL CheckFrame(SAMPLE_PRESENTATION&);
+	HRESULT AddSliceShortInfo(const int, const DWORD, const BOOL);
+	void FreeSurfaceIndexRenderer(const DWORD);
+
+	// Inline
+	void ClearPresentation(){ m_dqPicturePresentation.clear(); memset(g_Dxva2SurfaceIndexV2, 0, sizeof(g_Dxva2SurfaceIndexV2)); }
 	DWORD PictureToDisplayCount() const{ return (DWORD)m_dqPicturePresentation.size(); }
 	void SetCurrentNalu(const NAL_UNIT_TYPE eNalUnitType, const BYTE btNalRefIdc){ m_eNalUnitType = eNalUnitType; m_btNalRefIdc = btNalRefIdc; }
+	IDirect3DSurface9** GetDirect3DSurface9(){ return m_pSurface9; }
+	const BOOL IsInitialized() const{ return m_pVideoDecoder != NULL; }
 
 private:
 
-	// DirectX9Ex
-	IDirect3D9Ex* m_pD3D9Ex;
-	IDirect3DDevice9Ex* m_pDevice9Ex;
-
 	// Dxva2
-	UINT m_pResetToken;
-	IDirect3DDeviceManager9* m_pDXVAManager;
-	IDirectXVideoDecoderService* m_pDecoderService;
 	IDirectXVideoDecoder* m_pVideoDecoder;
 	IDirect3DSurface9* m_pSurface9[NUM_DXVA2_SURFACE];
-	DXVA2_VideoDesc m_Dxva2Desc;
+	IDirect3DDeviceManager9* m_pDirect3DDeviceManager9;
 	HANDLE m_hD3d9Device;
 	DXVA2_ConfigPictureDecode* m_pConfigs;
 	GUID m_gH264Vld;
@@ -51,12 +52,7 @@ private:
 	DXVA_PicParams_H264 m_H264PictureParams;
 	DXVA_Qmatrix_H264 m_H264QuantaMatrix;
 	DXVA_Slice_H264_Short m_H264SliceShort[MAX_SUB_SLICE];
-	DWORD m_dwCurPictureId;
-	DWORD m_dwPicturePresent;
-	DWORD m_dwPauseDuration;
 	DWORD m_dwStatusReportFeedbackNumber;
-
-	IDXVAHD_VideoProcessor* m_pDXVAVP;
 
 	struct POC{
 
@@ -80,25 +76,27 @@ private:
 	INT m_iPrevTopFieldOrderCount;
 	NAL_UNIT_TYPE m_eNalUnitType;
 	BYTE m_btNalRefIdc;
-#ifdef USE_DXVA2_SURFACE_INDEX
+
+	CriticSection m_CriticSection;
+
 	struct DXVA2_SURFACE_INDEX{
 
-		BOOL bUsed;
+		BOOL bUsedByDecoder;
+		BOOL bUsedByRenderer;
 		BOOL bNalRef;
 	};
-	DXVA2_SURFACE_INDEX g_Dxva2SurfaceIndex[NUM_DXVA2_SURFACE];
-#endif
 
-	HRESULT InitDecoderService();
-	HRESULT InitVideoDecoder(const SPS_DATA&);
+	DXVA2_SURFACE_INDEX g_Dxva2SurfaceIndexV2[NUM_DXVA2_SURFACE];
+
+	HRESULT InitDecoderService(IDirectXVideoDecoderService*);
 	void InitDxva2Struct(const SPS_DATA&);
 	void InitPictureParams(const DWORD, const PICTURE_INFO&);
 	void InitQuantaMatrixParams(const SPS_DATA&);
 	HRESULT AddNalUnitBufferPadding(CMFBuffer&, const UINT);
 	void HandlePOC(const DWORD, const PICTURE_INFO&, const LONGLONG&);
-	void ErasePastFrames(const LONGLONG&);
-	HRESULT InitVideoProcessor();
-	HRESULT ConfigureVideoProcessor();
+	void ErasePastFrames(const LONGLONG);
+	DWORD GetFreeSurfaceIndex();
+	void ResetAllSurfaceIndex();
 };
 
 #endif
