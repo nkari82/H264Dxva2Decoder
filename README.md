@@ -2,7 +2,7 @@
 
 ## Program
 
-This program parses mp4 file (avcc/avc1 format only), then parses NAL Unit, decodes slices using IDirectXVideoDecoder, then display pictures using IDirectXVideoProcessor. This program just uses Microsoft Windows SDK for Windows 7, visual studio community 2017, Mediafoundation API and C++. You need at minimum Windows Seven, and a GPU ables to fully hardware decode h264 video format. This program does not implements all h264 features, see limitations below.
+This program parses mp4 file (avcc/avc1 format only), then parses NAL Unit, decodes slices using IDirectXVideoDecoder, then display pictures using IDirectXVideoProcessor. This program just uses Microsoft Windows SDK for Windows 7, visual studio community 2017, Mediafoundation API and C++ (optional Directx SDK (june 2010)). You need at minimum Windows Seven, and a GPU able to fully hardware decode h264 video format. This program does not implement all h264 features, see limitations below.
 
 ## Windows OS executable
 
@@ -10,13 +10,14 @@ If you are not software enginer, or do not want the source code, you can try the
 
 Minimal configuration :
 * Windows Vista/Windows7/Windows8/Windows10
-* A graphic card with DXVA2_ModeH264_E GPU mode (you can use somme tools like DXVA Checker to know if your GPU is compliant)
+* A graphic card with DXVA2_ModeH264_E GPU mode (you can use some tools like DXVA Checker to know if your GPU is compliant)
 * The Microsoft Visual C++ 2017 Runtime (x86/x64) installed
 
 Movie file :
 * Open .mp4 or .mov files extension
 * Only the first video track found will be played
 * The audio is not processed
+* Subtitles are not processed
 
 Using the video player :
 * Drag and drop movie file, or with Menu : File->Open File
@@ -26,6 +27,8 @@ Using the video player :
   * space : play/pause
   * p : play
   * s : stop
+  * f : enter/exit fullscreen
+  * right arrow : step one frame
   * numpad 0 : seeks forward 10 minutes
   * numpad 1 : seeks forward 1 minutes
   * numpad 2 : seeks forward 2 minutes
@@ -43,14 +46,14 @@ Using the video player :
 * only tested DXVA2_ModeH264_E GPU mode
 * minimal GPU for NVIDIA cards -> Feature Set C (VP4) see https://en.wikipedia.org/wiki/Nvidia_PureVideo
 * the GPU decoding is OK with NVIDIA GeForce 700 series
-* With Intel HD Graphics, it's ok with startcode 0x00,0x00,0x01 but not with 0x000x00,0x00,0x01 (see #define USE_WORKAROUND_FOR_INTEL_GPU)
+* the GPU decoding is OK with Intel HD Graphics 4000 and 510
 
 ### ATOM
-* just uses needed atoms
-* sample time is not used for display : use 1000 / frame rate - 4 (custom frame rate approximation)
 * just uses the first video track found
 * partial sync sample atom is not handled
 * multiple stds atom are not handled
+* edts/elst atoms are not handled
+* does not handle inconsistent timestamps
 
 ### NALU
 * NaluLenghtSize == 1 is not handled (never encountered such mp4 file)
@@ -64,7 +67,7 @@ Using the video player :
 * redundant_pic_cnt_present_flag is not handled
 * pic_scaling_matrix_present_flag is not used
 * memory_management_control_operation is not used
-* SP/SI slice type are not handle
+* SP/SI slice type are not handled
 * only handles chroma_format_idc == 1
 
 ### DECODING
