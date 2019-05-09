@@ -4,11 +4,11 @@
 #ifndef MFTRACE_H
 #define MFTRACE_H
 
+#define DIRECTX_ERROR_UNDOCUMENTED	_HRESULT_TYPEDEF_(0x88760872L)
+
 #if (_DEBUG && MF_USE_LOGGING)
 
-#define DIRECTX_ERROR_UNDOCUMENTED    _HRESULT_TYPEDEF_(0x88760872L)
-
-inline LPCWSTR MFErrorString(HRESULT hr){
+inline LPCWSTR MFErrorString(const HRESULT hr){
 
 	switch(hr){
 
