@@ -51,7 +51,7 @@ private:
 	struct TIME_INFO{
 
 		DWORD dwCount;
-		DWORD dwOffset;
+		LONG lOffset;
 	};
 
 	struct EDIT_INFO{
@@ -59,6 +59,15 @@ private:
 		DWORD dwSegmentDuration;
 		DWORD dwMediaTime;
 		DWORD dwMediaRate;
+	};
+
+	struct COMPOSITION_SHIFT{
+
+		DWORD dwCompositionOffsetToDisplayOffsetShift;
+		LONG lLeastDisplayOffset;
+		LONG lGreatestDisplayOffset;
+		LONG lDisplayStartTime;
+		LONG lDisplayEndTime;
 	};
 
 	struct TRACK_INFO{
@@ -78,6 +87,7 @@ private:
 		vector<TIME_INFO> vTimeSample;
 		vector<TIME_INFO> vCompositionTime;
 		vector<EDIT_INFO> vEditList;
+		COMPOSITION_SHIFT* pCompositionShift;
 		CMFLightBuffer* pConfig;
 	};
 
@@ -113,6 +123,7 @@ private:
 	HRESULT ParseSampleSizeHeader(vector<SAMPLE_INFO>&, DWORD*, BYTE*, const DWORD);
 	HRESULT ParseChunckOffsetHeader(vector<DWORD>&, BYTE*, const DWORD);
 	HRESULT ParseChunckOffset64Header(vector<DWORD>&, BYTE*, const DWORD);
+	HRESULT ParseCompositionShiftLeastGreatestHeader(COMPOSITION_SHIFT**, BYTE*, const DWORD);
 
 	HRESULT ParseAvc1Format(CMFLightBuffer**, const BYTE*, const DWORD);
 	HRESULT ParseVideoConfigDescriptor(CMFLightBuffer**, const BYTE*, const DWORD);
