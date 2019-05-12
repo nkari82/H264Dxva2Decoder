@@ -51,7 +51,7 @@ private:
 	struct TIME_INFO{
 
 		DWORD dwCount;
-		LONG lOffset;
+		DWORD dwOffset;
 	};
 
 	struct EDIT_INFO{
@@ -63,7 +63,7 @@ private:
 
 	struct COMPOSITION_SHIFT{
 
-		DWORD dwCompositionOffsetToDisplayOffsetShift;
+		LONG lCompositionOffsetToDisplayOffsetShift;
 		LONG lLeastDisplayOffset;
 		LONG lGreatestDisplayOffset;
 		LONG lDisplayStartTime;

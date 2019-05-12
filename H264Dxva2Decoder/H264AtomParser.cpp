@@ -196,12 +196,21 @@ HRESULT CH264AtomParser::GetVideoFrameRate(const DWORD dwTrackId, UINT* puiNumer
 
 		if(TrackInfo.dwTrackId == dwTrackId){
 
-			const vector<SAMPLE_INFO>::const_reverse_iterator rit = TrackInfo.vSamples.rbegin();
+			if(TrackInfo.pCompositionShift == NULL){
 
-			if(rit != TrackInfo.vSamples.rend()){
+				const vector<SAMPLE_INFO>::const_reverse_iterator rit = TrackInfo.vSamples.rbegin();
 
-				ui64Time = rit->llTime + rit->llDuration;
-				ui64Time /= (TrackInfo.vSamples.size() + 1);
+				if(rit != TrackInfo.vSamples.rend()){
+
+					ui64Time = rit->llTime + rit->llDuration;
+					ui64Time /= (TrackInfo.vSamples.size() + 1);
+				}
+			}
+			else{
+
+				DWORD dwTimeScale = TrackInfo.dwTimeScale ? TrackInfo.dwTimeScale : m_dwTimeScale;
+				ui64Time = (LONGLONG)(((TrackInfo.pCompositionShift->lDisplayEndTime / (double)dwTimeScale) * 10000000));
+				ui64Time /= TrackInfo.vSamples.size();
 			}
 
 			break;
@@ -245,7 +254,8 @@ HRESULT CH264AtomParser::GetVideoDuration(const DWORD dwTrackId, MFTIME& llMovie
 			}
 			else{
 
-				llMovieDuration = TrackInfo.pCompositionShift->lDisplayEndTime * 1000;
+				DWORD dwTimeScale = TrackInfo.dwTimeScale ? TrackInfo.dwTimeScale : m_dwTimeScale;
+				llMovieDuration = (LONGLONG)(((TrackInfo.pCompositionShift->lDisplayEndTime / (double)dwTimeScale) * 10000000));
 				bMovieDuration = TRUE;
 			}
 
@@ -317,7 +327,7 @@ HRESULT CH264AtomParser::FinalizeSampleTime(TRACK_INFO& TrackInfo){
 
 		for(auto& itSample : TrackInfo.vSamples){
 
-			llDuration = (LONGLONG)((itTime->lOffset / (double)dwTimeScale) * 10000000);
+			llDuration = (LONGLONG)((itTime->dwOffset / (double)dwTimeScale) * 10000000);
 			itSample.llDuration = llDuration;
 
 			dwTimeSampleIndex++;
@@ -330,7 +340,15 @@ HRESULT CH264AtomParser::FinalizeSampleTime(TRACK_INFO& TrackInfo){
 				dwTimeSampleIndex = 0;
 			}
 
-			itSample.llTime = llTime + (LONGLONG)(((itComposition->lOffset / (double)dwTimeScale) * 10000000));
+			if(TrackInfo.pCompositionShift){
+
+				// This is just a quick workaround for file with clsg atom... See ISO/IEC 14496-12
+				itSample.llTime = llTime + (LONGLONG)((((LONG)itComposition->dwOffset / (double)dwTimeScale) * 10000000));
+			}
+			else{
+
+				itSample.llTime = llTime + (LONGLONG)(((itComposition->dwOffset / (double)dwTimeScale) * 10000000));
+			}
 
 			if(itComposition->dwCount == 1){
 
@@ -356,7 +374,7 @@ HRESULT CH264AtomParser::FinalizeSampleTime(TRACK_INFO& TrackInfo){
 
 		for(auto& itSample : TrackInfo.vSamples){
 
-			llDuration = (LONGLONG)((itTime->lOffset / (double)dwTimeScale) * 10000000);
+			llDuration = (LONGLONG)((itTime->dwOffset / (double)dwTimeScale) * 10000000);
 			itSample.llDuration = llDuration;
 
 			dwTimeSampleIndex++;
@@ -1129,7 +1147,7 @@ HRESULT CH264AtomParser::ParseSampleTimeHeader(vector<TIME_INFO>& vTimeSample, B
 		pData += 4;
 		sTimeInfo.dwCount = MAKE_DWORD(pData);
 		pData += 4;
-		sTimeInfo.lOffset = (LONG)MAKE_DWORD(pData);
+		sTimeInfo.dwOffset = MAKE_DWORD(pData);
 
 		vTimeSample.push_back(sTimeInfo);
 	}
@@ -1173,6 +1191,11 @@ HRESULT CH264AtomParser::ParseCompositionOffsetHeader(vector<TIME_INFO>& vCompos
 
 	IF_FAILED_RETURN(dwByteDone <= dwAtomCompositionOffsetSize ? S_OK : E_FAIL);
 
+	BYTE btVersion = *pData;
+
+	// todo : version 1 (0x01) -> sample offset is signed (LONG)
+	IF_FAILED_RETURN(btVersion != 0x00 ? E_FAIL : S_OK);
+
 	pData += 4;
 	const DWORD dwCompositionOffsetCount = MAKE_DWORD(pData);
 
@@ -1190,7 +1213,7 @@ HRESULT CH264AtomParser::ParseCompositionOffsetHeader(vector<TIME_INFO>& vCompos
 		pData += 4;
 		sTimeInfo.dwCount = MAKE_DWORD(pData);
 		pData += 4;
-		sTimeInfo.lOffset = (LONG)MAKE_DWORD(pData);
+		sTimeInfo.dwOffset = MAKE_DWORD(pData);
 
 		vCompositionTime.push_back(sTimeInfo);
 	}
@@ -1344,6 +1367,11 @@ HRESULT CH264AtomParser::ParseCompositionShiftLeastGreatestHeader(COMPOSITION_SH
 	IF_FAILED_RETURN((ppCompositionShift == NULL || *ppCompositionShift != NULL) ? E_UNEXPECTED : S_OK);
 	IF_FAILED_RETURN(dwByteDone <= dwAtomCompositionShiftSize ? S_OK : E_FAIL);
 
+	BYTE btVersion = *pData;
+
+	// todo : version 1 (0x01) -> values are MAKE_DWORD64
+	IF_FAILED_RETURN(btVersion != 0x00 ? E_FAIL : S_OK);
+
 	pCompositionShift = new (std::nothrow)COMPOSITION_SHIFT;
 	IF_FAILED_RETURN(pCompositionShift ? S_OK : E_OUTOFMEMORY);
 
@@ -1352,7 +1380,7 @@ HRESULT CH264AtomParser::ParseCompositionShiftLeastGreatestHeader(COMPOSITION_SH
 	// Skip version + flags
 	pData += 4;
 
-	pCompositionShift->dwCompositionOffsetToDisplayOffsetShift = MAKE_DWORD(pData);
+	pCompositionShift->lCompositionOffsetToDisplayOffsetShift = (LONG)MAKE_DWORD(pData);
 	pData += 4;
 	pCompositionShift->lLeastDisplayOffset = (LONG)MAKE_DWORD(pData);
 	pData += 4;
