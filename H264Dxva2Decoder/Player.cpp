@@ -195,7 +195,7 @@ HRESULT CPlayer::OpenFile(const HWND hWnd, LPCWSTR lpwszFile){
 
 	DXVA2_Frequency Dxva2Freq;
 	IF_FAILED_RETURN(m_cH264AtomParser.GetVideoFrameRate(m_dwTrackId, &Dxva2Freq.Numerator, &Dxva2Freq.Denominator));
-	IF_FAILED_RETURN(m_cDxva2Renderer.InitDXVA2(hWnd, m_cH264NaluParser.GetWidth(), m_cH264NaluParser.GetHeight(), Dxva2Freq.Numerator, Dxva2Freq.Denominator, Dxva2Desc));
+	IF_FAILED_RETURN(m_cDxva2Renderer.InitDXVA2(hWnd, m_cH264NaluParser.GetWidth(), m_cH264NaluParser.GetHeight(), Dxva2Freq.Numerator, Dxva2Freq.Denominator, Dxva2Desc, llMovieDuration));
 	IF_FAILED_RETURN(m_cDxva2Decoder.InitVideoDecoder(m_cDxva2Renderer.GetDeviceManager9(), &Dxva2Desc, m_cH264NaluParser.GetSPS()));
 
 	UINT64 AvgTimePerFrame;
@@ -790,6 +790,7 @@ void CPlayer::StopEvent(){
 
 	m_bStop = TRUE;
 	m_bPause = FALSE;
+	m_bStep = FALSE;
 
 	// todo : don't use INFINITE
 	WaitForSingleObject(m_hEventEndRendering, INFINITE);

@@ -15,10 +15,14 @@ CDxva2Renderer::CDxva2Renderer() :
 	m_bUseBT709(FALSE)
 {
 	ResetDxvaCaps();
-	memset(&m_LastPresentation, 0, sizeof(m_LastPresentation));
+	ZeroMemory(&m_LastPresentation, sizeof(SAMPLE_PRESENTATION));
+#ifdef USE_DIRECTX9
+	ZeroMemory(m_wszMovieFPS, sizeof(m_wszMovieFPS));
+	ZeroMemory(m_wszMovieDuration, sizeof(m_wszMovieFPS));
+#endif
 }
 
-HRESULT CDxva2Renderer::InitDXVA2(const HWND hWnd, const UINT uiWidth, const UINT uiHeight, const UINT uiNumerator, const UINT uiDenominator, DXVA2_VideoDesc& Dxva2Desc){
+HRESULT CDxva2Renderer::InitDXVA2(const HWND hWnd, const UINT uiWidth, const UINT uiHeight, const UINT uiNumerator, const UINT uiDenominator, DXVA2_VideoDesc& Dxva2Desc, const MFTIME llVideoDuration){
 
 	HRESULT hr;
 
@@ -50,6 +54,8 @@ HRESULT CDxva2Renderer::InitDXVA2(const HWND hWnd, const UINT uiWidth, const UIN
 #ifdef USE_DIRECTX9
 	RECT rcMovieTimeText = {0, 0, 100, 50};
 	IF_FAILED_RETURN(m_cMovieTime.OnRestore(m_pDevice9Ex, rcMovieTimeText, 32.0f));
+	IF_FAILED_RETURN(StringCchPrintf(m_wszMovieFPS, 32, L"\n%0.3f fps", uiNumerator / (float)uiDenominator));
+	IF_FAILED_RETURN(GetMovieTimeText(m_wszMovieDuration, llVideoDuration));
 #endif
 
 	DXVA2_Frequency Dxva2Freq;
@@ -88,6 +94,8 @@ void CDxva2Renderer::OnRelease(){
 
 #ifdef USE_DIRECTX9
 	m_cMovieTime.OnDelete();
+	ZeroMemory(m_wszMovieFPS, sizeof(m_wszMovieFPS));
+	ZeroMemory(m_wszMovieDuration, sizeof(m_wszMovieFPS));
 #endif
 
 	SAFE_RELEASE(m_pD3D9Ex);
@@ -531,11 +539,13 @@ HRESULT CDxva2Renderer::DrawMovieText(IDirect3DDevice9Ex* pDevice9Ex, const LONG
 
 	HRESULT hr;
 	WCHAR wszMovieTime[32];
+	WCHAR wszText[96];
 
 	IF_FAILED_RETURN(GetMovieTimeText(wszMovieTime, llMovieTime));
+	IF_FAILED_RETURN(StringCchPrintf(wszText, 96, L"%s%s\n%s", wszMovieTime, m_wszMovieFPS, m_wszMovieDuration));
 
 	IF_FAILED_RETURN(pDevice9Ex->BeginScene());
-	IF_FAILED_RETURN(m_cMovieTime.OnRender(wszMovieTime));
+	IF_FAILED_RETURN(m_cMovieTime.OnRender(wszText));
 	IF_FAILED_RETURN(pDevice9Ex->EndScene());
 
 	return hr;

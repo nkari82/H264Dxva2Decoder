@@ -12,7 +12,7 @@ public:
 	~CDxva2Renderer(){ OnRelease(); }
 
 	// Dxva2Renderer.cpp
-	HRESULT InitDXVA2(const HWND, const UINT, const UINT, const UINT, const UINT, DXVA2_VideoDesc&);
+	HRESULT InitDXVA2(const HWND, const UINT, const UINT, const UINT, const UINT, DXVA2_VideoDesc&, const MFTIME);
 	void OnRelease();
 	void Reset();
 	HRESULT RenderFrame(IDirect3DSurface9**, const SAMPLE_PRESENTATION&);
@@ -39,6 +39,8 @@ private:
 	SAMPLE_PRESENTATION m_LastPresentation;
 #ifdef USE_DIRECTX9
 	CText2D m_cMovieTime;
+	WCHAR m_wszMovieFPS[32];
+	WCHAR m_wszMovieDuration[32];
 #endif
 
 	DXVAHD_FILTER_RANGE_DATA_EX m_RangeBrightness;

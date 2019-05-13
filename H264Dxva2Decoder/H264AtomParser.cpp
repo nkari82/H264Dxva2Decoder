@@ -196,22 +196,20 @@ HRESULT CH264AtomParser::GetVideoFrameRate(const DWORD dwTrackId, UINT* puiNumer
 
 		if(TrackInfo.dwTrackId == dwTrackId){
 
+			LONGLONG llTime;
+			DWORD dwTimeScale = TrackInfo.dwTimeScale ? TrackInfo.dwTimeScale : m_dwTimeScale;
+
 			if(TrackInfo.pCompositionShift == NULL){
 
-				const vector<SAMPLE_INFO>::const_reverse_iterator rit = TrackInfo.vSamples.rbegin();
-
-				if(rit != TrackInfo.vSamples.rend()){
-
-					ui64Time = rit->llTime + rit->llDuration;
-					ui64Time /= (TrackInfo.vSamples.size() + 1);
-				}
+				llTime = TrackInfo.ui64VideoDuration ? TrackInfo.ui64VideoDuration : m_ui64VideoDuration;
 			}
 			else{
 
-				DWORD dwTimeScale = TrackInfo.dwTimeScale ? TrackInfo.dwTimeScale : m_dwTimeScale;
-				ui64Time = (LONGLONG)(((TrackInfo.pCompositionShift->lDisplayEndTime / (double)dwTimeScale) * 10000000));
-				ui64Time /= TrackInfo.vSamples.size();
+				llTime = TrackInfo.pCompositionShift->lDisplayEndTime;
 			}
+
+			ui64Time = (UINT64)(((llTime / (double)dwTimeScale) * 10000000));
+			ui64Time /= TrackInfo.vSamples.size();
 
 			break;
 		}
@@ -242,22 +240,20 @@ HRESULT CH264AtomParser::GetVideoDuration(const DWORD dwTrackId, MFTIME& llMovie
 
 		if(TrackInfo.dwTrackId == dwTrackId){
 
+			LONGLONG llTime;
+			DWORD dwTimeScale = TrackInfo.dwTimeScale ? TrackInfo.dwTimeScale : m_dwTimeScale;
+
 			if(TrackInfo.pCompositionShift == NULL){
 
-				const vector<SAMPLE_INFO>::const_reverse_iterator rit = TrackInfo.vSamples.rbegin();
-
-				if(rit != TrackInfo.vSamples.rend()){
-
-					llMovieDuration = rit->llTime + rit->llDuration;
-					bMovieDuration = TRUE;
-				}
+				llTime = TrackInfo.ui64VideoDuration ? TrackInfo.ui64VideoDuration : m_ui64VideoDuration;
 			}
 			else{
 
-				DWORD dwTimeScale = TrackInfo.dwTimeScale ? TrackInfo.dwTimeScale : m_dwTimeScale;
-				llMovieDuration = (LONGLONG)(((TrackInfo.pCompositionShift->lDisplayEndTime / (double)dwTimeScale) * 10000000));
-				bMovieDuration = TRUE;
+				llTime = TrackInfo.pCompositionShift->lDisplayEndTime;
 			}
+
+			llMovieDuration = (LONGLONG)(((llTime / (double)dwTimeScale) * 10000000));
+			bMovieDuration = TRUE;
 
 			break;
 		}
