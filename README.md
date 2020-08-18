@@ -6,7 +6,9 @@ This program parses mp4 file (avcc/avc1 format only), then parses NAL Unit, deco
 
 ## Windows OS executable
 
-If you are not software enginer, or do not want the source code, you can try the executable. Feedbacks are welcome, especially with AMD GPU cards.
+![H264Dxva2Decoder](./Media/H264Dxva2Decoder.jpg)
+
+If you are not software enginer, or do not want the source code, you can try the executable. Feedbacks are welcome, especially with AMD/ATI GPU cards.
 
 Minimal configuration :
 * Windows Vista/Windows7/Windows8/Windows10
@@ -39,6 +41,16 @@ Using the video player :
   * numpad 7 : seeks forward 7 minutes
   * numpad 8 : seeks forward 8 minutes
   * numpad 9 : seeks forward 9 minutes
+* Menu -> Dxva2 Settings
+  * Brightness
+  * Contrast
+  * Hue
+  * Saturation
+  * Noise Reduction
+  * Edge Enhancement
+  * Anamorphic Scaling
+  * BT601/BT709
+  
 
 ## limitations
 
@@ -47,6 +59,7 @@ Using the video player :
 * minimal GPU for NVIDIA cards -> Feature Set C (VP4) see https://en.wikipedia.org/wiki/Nvidia_PureVideo
 * the GPU decoding is OK with NVIDIA GeForce 700 series
 * the GPU decoding is OK with Intel HD Graphics 4000 and 510
+* For ATI cards, see issue : Dxva2Renderer.cpp - Line: 372 hr = E_NOINTERFACE. I've made a quick implementation to use IDirectXVideoProcessor instead of IDXVAHD_VideoProcessor. Feedback are welcome. The source code is in the directory SourceCodeForAtiCards : H264Dxva2DecoderSourceCodeForAtiCard.7z (Visual Studio Community 2017).
 
 ### ATOM
 * just uses the first video track found
@@ -54,6 +67,7 @@ Using the video player :
 * multiple stds atom are not handled
 * edts/elst atoms are not handled
 * does not handle inconsistent timestamps
+* does not handle moof atom (fragmented mp4)
 
 ### NALU
 * NaluLenghtSize == 1 is not handled (never encountered such mp4 file)
@@ -80,3 +94,9 @@ Using the video player :
 ### DISPLAY
 * SetVideoProcessStreamState should use values from mp4 file, here default for all
 * just use D3DFMT_X8R8G8B8 output format and D3DFMT_NV12 input format
+
+## Software Design
+
+### Class diagram
+
+![ClassDiagram](./Media/ClassDiagram.jpg)
